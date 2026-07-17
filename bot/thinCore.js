@@ -441,7 +441,8 @@ export async function come_to_owner(bot, memory, args = {}, context = {}) {
 
       // One stuck-recovery retry when pathing times out or fails while owner is still visible.
       let distanceAfter = ownerDistance(bot, ownerName);
-      const closeEnoughEarly = distanceAfter !== null && distanceAfter <= targetDistance + 4;
+      // Only treat as close when truly near — not 19 blocks away with a soft success lie.
+      const closeEnoughEarly = distanceAfter !== null && distanceAfter <= targetDistance + 1.5;
       if (
         !result.ok &&
         !closeEnoughEarly &&
@@ -463,8 +464,8 @@ export async function come_to_owner(bot, memory, args = {}, context = {}) {
       clearThinTaskActive(memory, 'come_to_owner', { followOwnerActive: false, lastAction: 'thin core come_to_owner', lastActionAt: now() });
     }
     const distance = ownerDistance(bot, ownerName);
-    const closeEnough = distance !== null && distance <= targetDistance + 4;
-    if (result.ok || (result.reason === 'timeout' && closeEnough)) {
+    const closeEnough = distance !== null && distance <= targetDistance + 1.5;
+    if (result.ok || (result.reason === 'timeout' && closeEnough) || (result.reason === 'path timeout' && closeEnough)) {
       const rounded = distance === null ? '?' : Math.round(distance);
       return ok(
         `I am close to ${ownerName} (about ${rounded} blocks).`,
@@ -474,8 +475,9 @@ export async function come_to_owner(bot, memory, args = {}, context = {}) {
     }
     const distText = distance === null ? 'I cannot see you' : `I am about ${Math.round(distance)} blocks away`;
     const reason = result.reason || result.message || 'path failed';
-    const hint = reason === 'timeout'
-      ? `${distText}. Pathing timed out — say "come here" again or "follow me".`
+    // Never claim "close" when still far — report real distance + retry hint.
+    const hint = /timeout|interrupted|busy/i.test(String(reason))
+      ? `${distText}. Pathing had trouble — say "come here" again, or meet me on land if we are in water.`
       : `${distText}: ${reason}`;
     return fail(hint, reason, { ownerDistance: distance, pluginWrapperUsed: result.data?.usedPlugin || null }, { wrapper: result });
   });

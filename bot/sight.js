@@ -2,6 +2,7 @@
  * Centralized "what can TJ see" helpers.
  * Improves target selection for digs, ores, and scan/status chat.
  */
+import { Vec3 } from 'vec3';
 
 // Resource name lists used by thin-core / wrappers
 export const RESOURCE_BLOCKS = {
@@ -29,6 +30,18 @@ const DANGER_BLOCKS = ['lava', 'fire', 'soul_fire', 'magma_block', 'cactus', 'po
 
 function originOf(bot, origin) {
   return origin || bot?.entity?.position || null;
+}
+
+/** Mineflayer blockAt requires a Vec3 (uses .floored()). */
+function asVec3(p) {
+  if (!p) return null;
+  if (typeof p.floored === 'function') return p;
+  return new Vec3(Number(p.x) || 0, Number(p.y) || 0, Number(p.z) || 0);
+}
+
+function blockAtCoords(bot, x, y, z) {
+  if (!bot?.blockAt) return null;
+  return bot.blockAt(new Vec3(Math.floor(x), Math.floor(y), Math.floor(z)));
 }
 
 function isFluidName(name) {
@@ -116,7 +129,7 @@ export function hasLineOfSight(bot, targetPos, options = {}) {
     const z = eye.z + dz * t;
     // Stop before the target cell
     if (Math.floor(x) === Math.floor(dest.x) && Math.floor(y) === Math.floor(dest.y) && Math.floor(z) === Math.floor(dest.z)) break;
-    const b = bot.blockAt({ x: Math.floor(x), y: Math.floor(y), z: Math.floor(z) });
+    const b = blockAtCoords(bot, x, y, z);
     if (!b || isPassableName(b.name) || isFluidName(b.name)) continue;
     if (allowLeaves && (b.name.includes('leaves') || b.name.includes('vine') || b.name === 'snow')) continue;
     if (b.boundingBox === 'block') solidHits += 1;
@@ -127,7 +140,8 @@ export function hasLineOfSight(bot, targetPos, options = {}) {
 
 function blockAtPos(bot, position) {
   if (!position) return null;
-  return bot.blockAt?.(position) || null;
+  const v = asVec3(position);
+  return bot.blockAt?.(v) || null;
 }
 
 /**
@@ -279,7 +293,7 @@ export function expandCluster(bot, seed, names, options = {}) {
       if (Math.abs(nx - seed.position.x) > maxDist) continue;
       if (Math.abs(ny - seed.position.y) > maxDist) continue;
       if (Math.abs(nz - seed.position.z) > maxDist) continue;
-      const block = bot.blockAt({ x: nx, y: ny, z: nz });
+      const block = blockAtCoords(bot, nx, ny, nz);
       if (!block || !nameSet.has(block.name)) continue;
       out.push(block);
       queue.push(block.position);

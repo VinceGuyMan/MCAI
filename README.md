@@ -1,3 +1,4 @@
+<img width="2816" height="1536" alt="MCAIGitBackround" src="https://github.com/user-attachments/assets/4244a648-ab75-4ce6-b7f9-eb8b476cb896" />
 # MCAI — Local Minecraft Companion Bot
 
 **Public alpha.** MCAI runs a local [Paper](https://papermc.io/) Minecraft server plus a physical [Mineflayer](https://github.com/PrismarineJS/mineflayer) player (default name `tj`). The bot is **code-first**: dig, craft, smelt, and movement work through deterministic routers and plugins. [Ollama](https://ollama.com) is **optional** and used mainly for dialogue.
@@ -132,3 +133,4 @@ Minecraft, Paper, and Mojang assets are subject to their own licenses/terms. **P
 ## Disclaimer
 
 This is an early public alpha. Expect pathing quirks, incomplete ore finds, and ongoing iron-age polish. It is a companion for local play, not a fully autonomous Minecraft agent.
+<img width="2064" height="1126" alt="MCAIIcon" src="https://github.com/user-attachments/assets/6d169060-7425-4096-83e5-d3b233aa726e" />

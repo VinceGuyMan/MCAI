@@ -9,8 +9,9 @@ Use this when you are ready to create the remote repo (local prep already done).
 - [x] `LICENSE` (MIT)
 - [x] `README.md` public-alpha framing
 - [x] `CONTRIBUTING.md` / `SECURITY.md`
-- [ ] `git init` + first commit (requires Git installed on PATH)
-- [ ] Review `git status` — no `config.json`, jars, worlds, or memory files
+- [x] Git for Windows installed (winget Git.Git)
+- [x] `git init -b main` + first commit `d8569a5` (423 source files)
+- [x] Review: `config.json`, jars, worlds, memory, node_modules **not** tracked
 
 ## GitHub (when you say go)
 

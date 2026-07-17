@@ -89,7 +89,8 @@ const defaults = {
   sightDigRadius: 40,
   sightOreRadius: 96,
   sightScanRadius: 40,
-  ownerPathTimeoutMs: 45000,
+  waterRescueCooldownMs: 8000,
+  waterRescueTimeoutMs: 22000,
   lastIncompleteCollectMaxAgeMs: 1200000,
   // Companion play mode (living Player 2 defaults). Still keeps Tier-2 parked.
   playMode: 'companion',

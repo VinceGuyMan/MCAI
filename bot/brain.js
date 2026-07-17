@@ -283,6 +283,34 @@ export function createBrain(config, deps) {
     const state = perception();
     updateStuckCounter(state);
 
+    // Water / drown rescue — emergency path before other brain work.
+    if (bot) {
+      try {
+        const water = await import('./waterRescue.js');
+        const inWater = water.botIsInFluid(bot) || water.botHeadInFluid(bot);
+        const o2 = Number(bot.oxygenLevel ?? 20);
+        const memW = memory.get();
+        const lastRescue = Number(memW.lastWaterRescueAt || 0);
+        const cooldown = Number(config.waterRescueCooldownMs || 8000);
+        if (inWater && (o2 < 14 || Date.now() - lastRescue > cooldown * 2)) {
+          if (Date.now() - lastRescue >= cooldown) {
+            memory.update({ lastWaterRescueAt: Date.now() });
+            const rescue = await water.rescueFromWater(bot, {
+              memory,
+              ownerUsername: config.ownerUsername,
+              timeoutMs: Number(config.waterRescueTimeoutMs || 20000)
+            });
+            if (rescue?.ok && !rescue.data?.skipped) {
+              // Let pathfinder settle one tick
+              return;
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`[brain] water rescue: ${error.message || error}`);
+      }
+    }
+
     if (bot && config.lifelikeDialogueEnabled && config.allowTaskCommentary) {
       if (state.health <= 6) eventDialogue.maybeSayEventComment(bot, memory, eventDialogue.onLowHealth({}));
       else if (state.food <= 6) eventDialogue.maybeSayEventComment(bot, memory, eventDialogue.onLowFood({ type: 'low_food' }));

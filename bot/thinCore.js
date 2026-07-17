@@ -463,9 +463,23 @@ export async function come_to_owner(bot, memory, args = {}, context = {}) {
     } finally {
       clearThinTaskActive(memory, 'come_to_owner', { followOwnerActive: false, lastAction: 'thin core come_to_owner', lastActionAt: now() });
     }
+    // If still in water after path, try shore rescue once.
+    try {
+      const { botIsInFluid, rescueFromWater } = await import('./waterRescue.js');
+      if (botIsInFluid(bot)) {
+        await rescueFromWater(bot, {
+          memory,
+          ownerUsername: ownerName,
+          timeoutMs: 18000
+        });
+      }
+    } catch {
+      // ignore
+    }
     const distance = ownerDistance(bot, ownerName);
     const closeEnough = distance !== null && distance <= targetDistance + 1.5;
-    if (result.ok || (result.reason === 'timeout' && closeEnough) || (result.reason === 'path timeout' && closeEnough)) {
+    // Pathfinder may return ok while still far — never lie about "close".
+    if (closeEnough) {
       const rounded = distance === null ? '?' : Math.round(distance);
       return ok(
         `I am close to ${ownerName} (about ${rounded} blocks).`,
@@ -474,10 +488,9 @@ export async function come_to_owner(bot, memory, args = {}, context = {}) {
       );
     }
     const distText = distance === null ? 'I cannot see you' : `I am about ${Math.round(distance)} blocks away`;
-    const reason = result.reason || result.message || 'path failed';
-    // Never claim "close" when still far — report real distance + retry hint.
-    const hint = /timeout|interrupted|busy/i.test(String(reason))
-      ? `${distText}. Pathing had trouble — say "come here" again, or meet me on land if we are in water.`
+    const reason = result?.reason || result?.message || (result?.ok ? 'still too far' : 'path failed');
+    const hint = /timeout|interrupted|busy|water/i.test(String(reason))
+      ? `${distText}. Pathing had trouble — say "come here" again, or meet on dry land if either of us is in water.`
       : `${distText}: ${reason}`;
     return fail(hint, reason, { ownerDistance: distance, pluginWrapperUsed: result.data?.usedPlugin || null }, { wrapper: result });
   });

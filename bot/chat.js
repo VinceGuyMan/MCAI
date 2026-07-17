@@ -826,6 +826,15 @@ export function setupChat(bot, config, deps) {
     if (command === 'where are you?') return actions.whereBot();
     if (command === 'where am i?') return actions.whereOwner();
     if (command === 'who is nearby?') return actions.whoNearby();
+    if (command === 'get to shore' || command === 'swim to shore' || command === 'get out of water' || command === 'water rescue') {
+      try {
+        const water = await import('./waterRescue.js');
+        const result = await water.rescueFromWater(bot, { memory, ownerUsername: config.ownerUsername, timeoutMs: 25000 });
+        return actions.answerChat(result.message || (result.ok ? 'On shore.' : 'Still struggling in the water.'));
+      } catch (error) {
+        return actions.answerChat(`Water rescue failed: ${error.message}`);
+      }
+    }
     if ((command === 'come here' || command === 'come' || command.includes('come to me')) && config.thinCoreEnabled) return actions.executeAction('thin_come_to_owner', {}, { sender: username, rawText: message, source: 'chat_command' });
     if (command === 'come here' || command === 'come' || command.includes('come to me')) return actions.comeToOwner();
     if ((command === 'follow me' || command === 'follow') && config.thinCoreEnabled) return actions.executeAction('thin_follow_owner', {}, { sender: username, rawText: message, source: 'chat_command' });

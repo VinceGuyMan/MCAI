@@ -4,7 +4,7 @@
  */
 
 import pathfinderPkg from 'mineflayer-pathfinder';
-import { applyDryPathMovements } from './pluginWrappers.js';
+import * as movement from './movementController.js';
 
 const { goals } = pathfinderPkg;
 const { GoalFollow, GoalNear } = goals || {};
@@ -247,6 +247,13 @@ function sleep(ms) {
 }
 
 export async function tryStuckRecovery(bot, options = {}) {
+  // Prefer shared unstuck, then local nudge fallback.
+  try {
+    const shared = await movement.unstuck(bot, { profile: options.profile || 'default', config: bot?.mcaiConfig });
+    if (shared?.ok) return { ok: true, ...shared };
+  } catch {
+    // fall through
+  }
   if (!bot?.entity) return { ok: false, reason: 'not spawned' };
   try {
     bot.clearControlStates?.();
@@ -356,7 +363,7 @@ export async function companionTick(bot, memory, context = {}) {
   if (mode !== 'companion' && mode !== 'quiet') {
     return { ok: true, ran: false, reason: 'not companion mode' };
   }
-  if (taskBusy(mem) || String(mem.movementMode || '').startsWith('thin_')) {
+  if (taskBusy(mem) || String(mem.movementMode || '').startsWith('thin_') || movement.isMoveBusy(memory, movement.MOVE_PRIORITY.job)) {
     return { ok: true, ran: false, reason: 'busy' };
   }
   if (context.cancellation?.isCancelled?.()) {
@@ -411,11 +418,14 @@ export async function companionTick(bot, memory, context = {}) {
     if (now() - Number(mem.lastCompanionSoftFollowAt || 0) < tickCooldown) {
       return { ok: true, ran: false, reason: 'soft_follow_cooldown' };
     }
-    if (!bot.pathfinder || !GoalFollow) {
+    if (!bot.pathfinder) {
       return { ok: false, ran: false, reason: 'pathfinder unavailable' };
     }
+    // Never steal pathfinder from an active job/come/flee claim.
+    if (!movement.canClaimMove(memory, 'soft_follow')) {
+      return { ok: true, ran: false, reason: 'path_claimed' };
+    }
 
-    // Too far: one-shot near goal is more reliable than permanent follow for brain coexistence.
     try {
       memUpdate(memory, {
         lastCompanionSoftFollowAt: now(),
@@ -423,16 +433,34 @@ export async function companionTick(bot, memory, context = {}) {
         lastAction: 'companion soft follow',
         lastActionAt: now()
       });
-      // Prefer land paths while soft-following (avoid swimming after the owner through water).
-      applyDryPathMovements(bot);
-      if (distance > maxDist && GoalNear) {
-        await bot.pathfinder.goto(new GoalNear(owner.position.x, owner.position.y, owner.position.z, softDist));
-      } else {
-        bot.pathfinder.setGoal(new GoalFollow(owner, softDist), true);
+      if (distance > maxDist) {
+        const result = await movement.gotoNear(bot, owner.position, {
+          memory,
+          owner: 'soft_follow',
+          priority: 'soft_follow',
+          kind: 'soft_follow',
+          range: softDist,
+          profile: 'follow',
+          timeoutMs: 18000,
+          release: true,
+          movementMode: 'companion_soft_follow'
+        });
+        if (!result.ok && stuckRecovery) await tryStuckRecovery(bot);
+        return { ok: result.ok, ran: true, reason: result.ok ? 'soft_follow' : result.reason, data: { distance } };
       }
-      return { ok: true, ran: true, reason: 'soft_follow', data: { distance } };
+      const follow = await movement.followEntity(bot, owner, {
+        memory,
+        owner: 'soft_follow',
+        priority: 'soft_follow',
+        range: softDist,
+        profile: 'follow',
+        movementMode: 'companion_soft_follow',
+        reason: 'companion soft follow'
+      });
+      return { ok: follow.ok, ran: true, reason: follow.ok ? 'soft_follow' : follow.reason, data: { distance } };
     } catch (error) {
       if (stuckRecovery) await tryStuckRecovery(bot);
+      movement.releaseMove(memory, 'soft_follow', { clearMode: true, force: true });
       memUpdate(memory, { movementMode: null, lastUnstuckAt: now() });
       return { ok: false, ran: true, reason: error.message || 'soft follow failed' };
     }

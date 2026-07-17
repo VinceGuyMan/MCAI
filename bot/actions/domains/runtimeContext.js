@@ -4,6 +4,7 @@
  */
 import { clearAllConfirmations } from '../../confirmationManager.js';
 import { logNames, wait, posText } from '../shared.js';
+import { applyProfile, buildMovements } from '../../movementController.js';
 
 /**
  * @param {object} opts
@@ -24,26 +25,14 @@ export function createRuntimeContext({ bot, config, memory, safety, cancellation
 
   function setupMovements() {
     if (state.movements || !bot.registry) return;
-    state.movements = new Movements(bot);
-    state.movements.canDig = true;
-    // Prefer dry land globally; surface digs raise this further.
-    state.movements.liquidCost = Math.max(80, Number(config.defaultLiquidCost || 80));
-
-    const water = bot.registry.blocksByName.water;
-    const lava = bot.registry.blocksByName.lava;
-    const fire = bot.registry.blocksByName.fire;
-    const bubble = bot.registry.blocksByName.bubble_column;
-    if (water) state.movements.blocksToAvoid.add(water.id);
-    if (lava) state.movements.blocksToAvoid.add(lava.id);
-    if (fire) state.movements.blocksToAvoid.add(fire.id);
-    if (bubble) state.movements.blocksToAvoid.add(bubble.id);
-    // Flowing water/lava aliases in some versions
-    for (const [name, entry] of Object.entries(bot.registry.blocksByName || {})) {
-      if ((/water|lava/.test(name)) && entry?.id !== undefined) {
-        state.movements.blocksToAvoid.add(entry.id);
-      }
+    // Shared movement profiles: fluid-avoiding default for all pathing.
+    const built = buildMovements(bot, 'default', config);
+    state.movements = built || new Movements(bot);
+    if (!built) {
+      state.movements.canDig = true;
+      state.movements.liquidCost = Math.max(120, Number(config.defaultLiquidCost || 120));
     }
-
+    applyProfile(bot, 'default', config);
     bot.pathfinder.setMovements(state.movements);
   }
 

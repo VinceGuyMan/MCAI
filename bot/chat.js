@@ -729,7 +729,14 @@ export function setupChat(bot, config, deps) {
     if (command === 'known places' || command === 'list places' || command === 'waypoints') return actions.listKnownPlaces();
     if (command === 'exploration status' || command === 'scout status') return actions.explorationStatus();
     if (command === 'where have you been?' || command === 'where have you been' || command === 'what have you found?' || command === 'what have you found') return actions.reportExplorationResults();
-    if (command === 'scan area' || command === 'look around' || command === 'what do you see?' || command === 'what do you see') return actions.scanArea();
+    if (command === 'scan area' || command === 'look around' || command === 'what do you see?' || command === 'what do you see' || command === 'what can you see') {
+      try {
+        const { describeSight } = await import('./sight.js');
+        return actions.answerChat(describeSight(bot, { radius: 40 }));
+      } catch {
+        return actions.scanArea();
+      }
+    }
     if (command === 'nearby resources' || command === 'nearby dangers') return actions.scanArea();
     if (command === 'known resources') return actions.knownResources();
     if (command === 'known dangers') return actions.knownDangerZones();

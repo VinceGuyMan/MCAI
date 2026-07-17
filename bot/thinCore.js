@@ -433,6 +433,9 @@ export async function come_to_owner(bot, memory, args = {}, context = {}) {
         ownerUsername: ownerName,
         cancellation: context.cancellation || bot?.mcaiCancellation,
         distance: targetDistance,
+        memory,
+        moveOwner: 'come_to_owner',
+        timeoutMs,
         source: 'thinCore'
       }), timeoutMs, () => clearMovement(bot));
 
@@ -489,6 +492,8 @@ export async function follow_owner(bot, memory, args = {}, context = {}) {
       ownerUsername: ownerName,
       cancellation: context.cancellation || bot?.mcaiCancellation,
       distance: followRange,
+      memory,
+      moveOwner: 'follow_owner',
       source: 'thinCore'
     });
     const distance = ownerDistance(bot, ownerName);

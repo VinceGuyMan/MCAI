@@ -1,20 +1,13 @@
 import pathfinderPkg from 'mineflayer-pathfinder';
 import { isCancelledError } from './cancellation.js';
 import { getPluginRuntimeStatus } from './pluginStatus.js';
+import * as movement from './movementController.js';
+import * as sight from './sight.js';
 
 const { GoalNear, GoalFollow, GoalLookAtBlock } = pathfinderPkg.goals || {};
 const Movements = pathfinderPkg.Movements || pathfinderPkg.default?.Movements;
 
-const RESOURCE_BLOCKS = {
-  wood: ['oak_log', 'birch_log', 'spruce_log', 'jungle_log', 'acacia_log', 'dark_oak_log', 'mangrove_log', 'cherry_log'],
-  stone: ['stone', 'cobblestone', 'deepslate', 'andesite', 'diorite', 'granite'],
-  coal: ['coal_ore', 'deepslate_coal_ore'],
-  iron: ['iron_ore', 'deepslate_iron_ore'],
-  dirt: ['dirt', 'grass_block', 'coarse_dirt', 'rooted_dirt', 'mud'],
-  sand: ['sand', 'red_sand'],
-  gravel: ['gravel'],
-  clay: ['clay']
-};
+const RESOURCE_BLOCKS = sight.RESOURCE_BLOCKS;
 
 function ok(message, data = {}, evidence = []) {
   return { ok: true, message, evidence, data };
@@ -58,17 +51,7 @@ async function safely(label, bot, options, fn) {
 }
 
 function clearPathfinderGoal(bot) {
-  if (typeof bot?.pathfinder?.setGoal === 'function') {
-    try {
-      bot.pathfinder.setGoal(null);
-      return;
-    } catch {
-      // Fall through to stop() when a test double or plugin edge case rejects null goals.
-    }
-  }
-  if (typeof bot?.pathfinder?.stop === 'function') {
-    bot.pathfinder.stop();
-  }
+  movement.clearGoal(bot);
 }
 
 function cancelCollection(bot) {
@@ -198,31 +181,11 @@ function addFluidAvoidIds(movements, bot) {
 
 /** Install high liquidCost movements so pathfinder will not swim for surface digs. */
 export function applyDryPathMovements(bot) {
-  if (!bot?.pathfinder?.setMovements || !Movements) return null;
-  const previous = bot.pathfinder.movements || null;
-  try {
-    const dry = new Movements(bot);
-    dry.canDig = true;
-    dry.allowSprinting = true;
-    dry.allow1by1 = true;
-    // Extremely expensive liquids so A* prefers dry land (or fails cleanly).
-    dry.liquidCost = 10000;
-    if ('dontCreateFlow' in dry) dry.dontCreateFlow = true;
-    addFluidAvoidIds(dry, bot);
-    bot.pathfinder.setMovements(dry);
-    return previous;
-  } catch {
-    return null;
-  }
+  return movement.applyProfile(bot, 'dry', bot?.mcaiConfig || {});
 }
 
 function restorePathMovements(bot, previous) {
-  if (!bot?.pathfinder?.setMovements) return;
-  try {
-    if (previous) bot.pathfinder.setMovements(previous);
-  } catch {
-    // best effort
-  }
+  movement.restoreProfile(bot, previous);
 }
 
 function waitMs(ms) {
@@ -305,47 +268,32 @@ async function emergencySurface(bot) {
 }
 
 function blockTargets(bot, names, options = {}) {
-  const nameSet = new Set(names);
   const want = Math.max(1, options.count || options.targetCount || 1);
   const resourceName = String(options.resourceName || options.resource || '');
   const shovelSurface = ['dirt', 'sand', 'gravel', 'clay'].includes(resourceName);
-  // Shovel surface: strict dry stand. Stone/ore/wood: only reject fluid-soaked blocks.
   const preferDry = options.preferDry !== false;
-  const strictDry = preferDry && (shovelSurface || options.strictDry === true);
-  const positions = bot.findBlocks?.({
-    matching: (block) => Boolean(block?.name && nameSet.has(block.name)),
-    maxDistance: options.maxDistance || 16,
-    count: Math.max(want * 12, 48)
-  }) || [];
+  const strictDry = options.strictDry === true || (preferDry && shovelSurface);
   const safety = options.safety || bot?.mcaiSafety || null;
   const state = options.state || null;
-  let blocks = positions
-    .map((position) => bot.blockAt?.(position))
-    .filter(Boolean)
-    .filter((block) => {
-      if (typeof safety?.safeToDig !== 'function') return true;
-      try {
-        return safety.safeToDig(block, state).ok !== false;
-      } catch {
-        return false;
-      }
-    });
 
-  if (strictDry) {
-    blocks = blocks.filter((block) => isSafeDrySurfaceTarget(bot, block));
-  } else if (preferDry) {
-    // Soft dry: skip underwater / lava-covered only (hillside stone stays valid).
-    blocks = blocks.filter((block) => !isWetTarget(bot, block));
-  }
+  let blocks = sight.findNamedBlocks(bot, names, {
+    maxDistance: options.maxDistance || sight.SIGHT_RADIUS.dig,
+    count: Math.max(want * 12, 48),
+    preferDry,
+    strictDry,
+    requireLos: options.requireLos === true,
+    allowLeaves: resourceName === 'wood' || names.some((n) => String(n).includes('log')),
+    clusterFirst: true
+  });
 
-  // Prefer nearest cluster: finish one tree/vein face before hopping far away.
-  const origin = bot?.entity?.position;
-  if (origin && blocks.length > 1) {
-    blocks = [...blocks].sort((a, b) => origin.distanceTo(a.position) - origin.distanceTo(b.position));
-    const seed = blocks[0];
-    const rest = blocks.slice(1).sort((a, b) => seed.position.distanceTo(a.position) - seed.position.distanceTo(b.position));
-    blocks = [seed, ...rest];
-  }
+  blocks = blocks.filter((block) => {
+    if (typeof safety?.safeToDig !== 'function') return true;
+    try {
+      return safety.safeToDig(block, state).ok !== false;
+    } catch {
+      return false;
+    }
+  });
   return blocks;
 }
 
@@ -481,17 +429,15 @@ async function ensureInventorySlotsForCollect(bot, need = 2, options = {}) {
  */
 function expandVeinTargets(bot, seed, names, maxBlocks = 32) {
   if (!seed?.position) return [seed];
-  const nameSet = new Set(names);
   const isWood = names.some((n) => String(n).includes('log'));
-
-  // Prefer plugin vein flood-fill when available.
+  // Prefer plugin vein when available, else sight BFS cluster.
   if (bot?.collectBlock?.findFromVein) {
     try {
       const vein = bot.collectBlock.findFromVein(seed, maxBlocks, isWood ? 28 : 16, isWood ? 2 : 1) || [];
+      const nameSet = new Set(names);
       const filtered = vein.filter((block) => block?.name && nameSet.has(block.name));
-      if (filtered.length) {
+      if (filtered.length >= 2) {
         if (isWood) {
-          // Bottom → top so we stay grounded while climbing the trunk.
           filtered.sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x) || (a.position.z - b.position.z));
         } else {
           filtered.sort((a, b) => seed.position.distanceTo(a.position) - seed.position.distanceTo(b.position));
@@ -499,38 +445,10 @@ function expandVeinTargets(bot, seed, names, maxBlocks = 32) {
         return filtered;
       }
     } catch {
-      // fall through to manual column scan
+      // fall through
     }
   }
-
-  // Manual trunk column for wood: same XZ ±1, scan Y up/down.
-  if (isWood && bot?.blockAt) {
-    const column = [seed];
-    const sx = seed.position.x;
-    const sy = seed.position.y;
-    const sz = seed.position.z;
-    for (let dy = 1; dy <= 12 && column.length < maxBlocks; dy += 1) {
-      for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const b = bot.blockAt(seed.position.offset(dx, dy, dz));
-        if (b?.name && nameSet.has(b.name)) column.push(b);
-      }
-    }
-    for (let dy = -1; dy >= -2 && column.length < maxBlocks; dy -= 1) {
-      const b = bot.blockAt(seed.position.offset(0, dy, 0));
-      if (b?.name && nameSet.has(b.name)) column.push(b);
-    }
-    const seen = new Set();
-    const unique = [];
-    for (const b of column) {
-      const key = `${b.position.x},${b.position.y},${b.position.z}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      unique.push(b);
-    }
-    unique.sort((a, b) => (a.position.y - b.position.y) || (a.position.x - b.position.x));
-    if (unique.length) return unique;
-  }
-  return [seed];
+  return sight.expandCluster(bot, seed, names, { maxBlocks, maxDistance: isWood ? 20 : 12 });
 }
 
 /** Dig one block without collectblock chest deposit logic. Prefer look-at over jump-on-block. */
@@ -538,10 +456,7 @@ async function digOneBlockDirect(bot, block, options = {}) {
   if (!block?.position) throw new Error('No block to dig.');
   const live = bot.blockAt?.(block.position) || block;
   if (!live || live.name === 'air') return { dug: false };
-  clearPathfinderGoal(bot);
-  if (preferDryPath(options) || options.preferDry !== false) {
-    applyDryPathMovements(bot);
-  }
+
   if (bot?.tool?.equipForBlock) {
     try {
       await bot.tool.equipForBlock(live, { requireHarvest: true, getFromChest: false });
@@ -550,27 +465,18 @@ async function digOneBlockDirect(bot, block, options = {}) {
     }
   }
 
-  // GoalLookAtBlock stands beside the face — avoids jump-spam up tree trunks.
-  try {
-    if (bot?.pathfinder?.goto && GoalLookAtBlock && bot.world) {
-      await bot.pathfinder.goto(new GoalLookAtBlock(live.position, bot.world, { reach: 4 }));
-    } else if (bot?.pathfinder?.goto && bot.entity?.position.distanceTo(live.position) > 3.2) {
-      // Stand next to block at feet Y when possible (not on top).
-      const px = live.position.x;
-      const pz = live.position.z;
-      const py = Math.floor(bot.entity.position.y);
-      await bot.pathfinder.goto(new GoalNear(px, py, pz, 2));
-    }
-  } catch {
-    clearPathfinderGoal(bot);
-    // Last try: near the block
-    try {
-      if (bot?.pathfinder?.goto) {
-        await bot.pathfinder.goto(new GoalNear(live.position.x, live.position.y, live.position.z, 2));
-      }
-    } catch {
-      clearPathfinderGoal(bot);
-    }
+  // Shared movement controller: dig profile + look-at (no jump spam on trunks).
+  const look = await movement.gotoLookAtBlock(bot, live, {
+    memory: options.memory || null,
+    owner: options.moveOwner || 'digOne',
+    priority: 'job',
+    profile: options.preferDry === false ? 'default' : 'dig',
+    timeoutMs: Number(options.pathTimeoutMs || 18000),
+    release: true,
+    config: options.config || bot.mcaiConfig
+  });
+  if (!look.ok && /busy|claim/i.test(String(look.reason || ''))) {
+    throw new Error(look.reason || 'path busy');
   }
 
   const still = bot.blockAt?.(live.position);
@@ -586,20 +492,19 @@ async function digOneBlockDirect(bot, block, options = {}) {
       return isItem && bot.entity.position.distanceTo(e.position) < 3.5;
     });
     for (const drop of drops.slice(0, 2)) {
-      try {
-        await bot.pathfinder?.goto?.(new GoalNear(drop.position.x, drop.position.y, drop.position.z, 0));
-      } catch {
-        // ignore
-      }
+      await movement.gotoNear(bot, drop.position, {
+        range: 0,
+        profile: 'default',
+        timeoutMs: 4000,
+        owner: 'pickup',
+        priority: 'job',
+        memory: null
+      });
     }
   } catch {
     // ignore
   }
   return { dug: true };
-}
-
-function preferDryPath(options = {}) {
-  return options.preferDry !== false;
 }
 
 function pluginMissingReason(packageName) {
@@ -848,22 +753,23 @@ export async function pathToOwnerSafely(bot, options = {}) {
     if (!owner) return fail('Owner is not visible.');
     if (!bot?.pathfinder?.goto) return fail(pluginMissingReason('mineflayer-pathfinder'), { usedPlugin: false });
     const distance = options.distance || bot?.mcaiConfig?.followDistance || 3;
-    // Prefer dry land paths so come/follow do not walk into water/lava to reach you.
-    const prevMovements = applyDryPathMovements(bot);
-    const unregister = registerCancelableTask(bot, options, 'pluginWrappers:pathToOwner', () => clearPathfinderGoal(bot));
-    try {
-      if (botIsInFluid(bot)) {
-        await emergencySurface(bot);
-      }
-      await bot.pathfinder.goto(new GoalNear(owner.position.x, owner.position.y, owner.position.z, distance));
-      if (botIsInFluid(bot)) {
-        await emergencySurface(bot);
-      }
-    } finally {
-      unregister();
-      restorePathMovements(bot, prevMovements);
-    }
-    return ok('Reached owner using mineflayer-pathfinder.', { owner: ownerName, usedPlugin: 'mineflayer-pathfinder' }, ['returned_safely']);
+    if (botIsInFluid(bot)) await emergencySurface(bot);
+
+    const result = await movement.gotoNear(bot, owner.position, {
+      memory: options.memory || bot.mcaiMemory || null,
+      owner: options.moveOwner || 'come_to_owner',
+      priority: 'come',
+      kind: 'come',
+      range: distance,
+      profile: 'follow',
+      timeoutMs: Number(options.timeoutMs || bot?.mcaiConfig?.ownerPathTimeoutMs || 45000),
+      release: true,
+      config: options.config || bot.mcaiConfig,
+      movementMode: 'thin_come_to_owner'
+    });
+    if (botIsInFluid(bot)) await emergencySurface(bot);
+    if (!result.ok) return fail(result.reason || result.message || 'path to owner failed', { owner: ownerName, usedPlugin: 'movementController' });
+    return ok('Reached owner using mineflayer-pathfinder.', { owner: ownerName, usedPlugin: 'movementController' }, ['returned_safely']);
   });
 }
 
@@ -874,11 +780,24 @@ export async function followOwnerSafely(bot, options = {}) {
     if (!owner) return fail('Owner is not visible.');
     if (!bot?.pathfinder?.setGoal) return fail(pluginMissingReason('mineflayer-pathfinder'), { usedPlugin: false });
     const distance = options.distance || bot?.mcaiConfig?.followDistance || 3;
-    // Dry-preferring movements while following (expensive water/lava).
-    applyDryPathMovements(bot);
-    bot.pathfinder.setGoal(new GoalFollow(owner, distance), true);
-    registerCancelableTask(bot, options, 'pluginWrappers:followOwner', () => clearPathfinderGoal(bot));
-    return ok('Following owner using mineflayer-pathfinder.', { owner: ownerName, distance, usedPlugin: 'mineflayer-pathfinder' }, ['follow_goal_set']);
+    const result = await movement.followEntity(bot, owner, {
+      memory: options.memory || bot.mcaiMemory || null,
+      owner: options.moveOwner || 'follow_owner',
+      priority: 'follow',
+      range: distance,
+      profile: 'follow',
+      config: options.config || bot.mcaiConfig,
+      movementMode: 'follow_owner',
+      reason: 'follow owner'
+    });
+    if (!result.ok) return fail(result.reason || result.message || 'follow failed', { owner: ownerName });
+    registerCancelableTask(bot, options, 'pluginWrappers:followOwner', () => {
+      clearPathfinderGoal(bot);
+      if (options.memory || bot.mcaiMemory) {
+        movement.releaseMove(options.memory || bot.mcaiMemory, options.moveOwner || 'follow_owner', { clearMode: true });
+      }
+    });
+    return ok('Following owner using mineflayer-pathfinder.', { owner: ownerName, distance, usedPlugin: 'movementController' }, ['follow_goal_set']);
   });
 }
 
@@ -889,18 +808,19 @@ export async function pathToPositionSafely(bot, position, options = {}) {
     }
     if (!bot?.pathfinder?.goto) return fail(pluginMissingReason('mineflayer-pathfinder'), { usedPlugin: false });
     const preferDry = options.preferDry !== false;
-    const prevMovements = preferDry ? applyDryPathMovements(bot) : null;
-    const unregister = registerCancelableTask(bot, options, 'pluginWrappers:pathToPosition', () => clearPathfinderGoal(bot));
-    try {
-      if (preferDry && botIsInFluid(bot)) {
-        await emergencySurface(bot);
-      }
-      await bot.pathfinder.goto(new GoalNear(position.x, position.y, position.z, options.distance || 2));
-    } finally {
-      unregister();
-      if (preferDry) restorePathMovements(bot, prevMovements);
-    }
-    return ok('Reached position using mineflayer-pathfinder.', { position, usedPlugin: 'mineflayer-pathfinder' }, ['returned_safely']);
+    if (preferDry && botIsInFluid(bot)) await emergencySurface(bot);
+    const result = await movement.gotoNear(bot, position, {
+      memory: options.memory || bot.mcaiMemory || null,
+      owner: options.moveOwner || 'goto_position',
+      priority: options.priority || 'job',
+      range: options.distance || 2,
+      profile: preferDry ? 'dry' : 'default',
+      timeoutMs: Number(options.timeoutMs || 30000),
+      release: true,
+      config: options.config || bot.mcaiConfig
+    });
+    if (!result.ok) return fail(result.reason || result.message || 'path failed', { position });
+    return ok('Reached position using mineflayer-pathfinder.', { position, usedPlugin: 'movementController' }, ['returned_safely']);
   });
 }
 

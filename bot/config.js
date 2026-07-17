@@ -84,6 +84,12 @@ const defaults = {
   thinCoreCollectMaxDistance: 48,
   // Prefer finishing the same tree/vein before hopping (one-by-one digs).
   thinCoreCollectOneByOneDefault: true,
+  // Movement / sight overhaul defaults
+  defaultLiquidCost: 120,
+  sightDigRadius: 40,
+  sightOreRadius: 96,
+  sightScanRadius: 40,
+  ownerPathTimeoutMs: 45000,
   lastIncompleteCollectMaxAgeMs: 1200000,
   // Companion play mode (living Player 2 defaults). Still keeps Tier-2 parked.
   playMode: 'companion',

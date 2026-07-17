@@ -324,14 +324,23 @@ export function createBrain(config, deps) {
       const memCombat = memory.get();
       const lastFleeChatAt = Number(memCombat.lastFleeChatAt || 0);
       const fleeChatCooldown = Number(config.fleeChatCooldownMs || 15000);
-      // Movement mutex: active thin-core / core macro owns pathfinding — only flee if critically hurt.
-      const jobHoldsMovement = Boolean(
+      // Movement mutex: jobs / move claims own pathfinder — only flee if critically hurt.
+      let jobHoldsMovement = Boolean(
         memCombat.thinCoreTaskActive
         || memCombat.activeCoreMacro
         || memCombat.activeResourceRun
         || String(memCombat.movementMode || '').startsWith('thin_')
         || String(memCombat.activeThinCoreAction || '').includes('collect')
       );
+      try {
+        // Lazy import not needed — claim stored on memory
+        const claim = memCombat.moveClaim;
+        if (claim && Number(claim.priority || 0) >= 60 && (!claim.expiresAt || Date.now() <= claim.expiresAt)) {
+          jobHoldsMovement = true;
+        }
+      } catch {
+        // ignore
+      }
       const criticalHealth = Number(state.health ?? 20) <= Number(config.criticalHealthForFleeInterrupt || 8);
       // Emergency flee only when hostiles exist (or combat mode is already flee). Low food alone must not spam retreat.
       if (

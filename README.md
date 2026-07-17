@@ -1,6 +1,6 @@
 <img width="2816" height="1536" alt="MCAIGitBackround" src="https://github.com/user-attachments/assets/4244a648-ab75-4ce6-b7f9-eb8b476cb896" />
-# MCAI — Local Minecraft Companion Bot
 
+## MCAI — Local Minecraft Companion Bot
 **Public alpha.** MCAI runs a local [Paper](https://papermc.io/) Minecraft server plus a physical [Mineflayer](https://github.com/PrismarineJS/mineflayer) player (default name `tj`). The bot is **code-first**: dig, craft, smelt, and movement work through deterministic routers and plugins. [Ollama](https://ollama.com) is **optional** and used mainly for dialogue.
 
 > Keep the server local. Do **not** port-forward Minecraft or the dashboard.

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MCAI Setup — LLM &amp; Checklist</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>MCAI Setup</h1>
+        <p>Plug in Ollama / LM Studio, pick models, and verify server + bot health.</p>
+      </div>
+      <div class="header-actions">
+        <a class="secondary button-link" href="/">← Dashboard</a>
+        <button id="tokenButton" class="secondary">Set Token</button>
+        <button id="refreshChecklist" class="secondary">Refresh checklist</button>
+      </div>
+    </header>
+
+    <main class="setup-main">
+      <section class="summary-bar card" id="summaryBar">
+        <div class="summary-item"><span>Checklist</span><strong id="summaryText">Loading…</strong></div>
+        <div class="summary-item"><span>Pass</span><strong id="summaryPass">-</strong></div>
+        <div class="summary-item"><span>Warn</span><strong id="summaryWarn">-</strong></div>
+        <div class="summary-item"><span>Fail</span><strong id="summaryFail">-</strong></div>
+        <div class="summary-item"><span>Provider</span><strong id="summaryProvider">-</strong></div>
+      </section>
+
+      <section class="setup-grid">
+        <article class="card setup-card">
+          <h2>1. LLM program</h2>
+          <p class="muted">Choose what is serving your local models.</p>
+
+          <label class="field">
+            <span>Provider</span>
+            <select id="providerSelect"></select>
+          </label>
+
+          <p class="hint" id="providerHint"></p>
+
+          <label class="field">
+            <span>Base URL</span>
+            <input id="baseUrlInput" type="text" placeholder="http://127.0.0.1:11434" spellcheck="false">
+          </label>
+
+          <div class="row-actions">
+            <button id="loadModelsBtn" class="secondary">Load models</button>
+            <button id="testLlmBtn" class="secondary">Test chat</button>
+          </div>
+          <p class="status-line" id="modelLoadStatus"></p>
+        </article>
+
+        <article class="card setup-card">
+          <h2>2. Models by role</h2>
+          <p class="muted">Pick a model for each bot role (or leave fallbacks empty).</p>
+          <div id="roleFields" class="role-fields"></div>
+          <div class="row-actions">
+            <button id="applyDefaultBtn" class="secondary">Copy default → all roles</button>
+            <button id="saveLlmBtn" class="primary">Save LLM settings</button>
+          </div>
+          <p class="status-line" id="saveStatus"></p>
+        </article>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>3. Setup checklist</h2>
+          <p class="muted">Server, bot process, plugins, LLM reachability, and common mistakes.</p>
+        </div>
+        <div id="checklist" class="checklist"></div>
+      </section>
+
+      <section class="split">
+        <article class="card">
+          <h2>Bot / server errors</h2>
+          <p class="muted">Recent log lines that look like failures.</p>
+          <pre id="errorLogs" class="log-box">No errors loaded yet.</pre>
+        </article>
+        <article class="card">
+          <h2>Failure memory</h2>
+          <p class="muted">Recent items from bot failure memory.</p>
+          <pre id="failureMemory" class="log-box">None.</pre>
+        </article>
+      </section>
+
+      <section class="card tips">
+        <h2>Quick tips</h2>
+        <ul>
+          <li><strong>Ollama:</strong> run <code>ollama serve</code>, then <code>ollama pull qwen3:14b</code> (or your preferred models).</li>
+          <li><strong>LM Studio:</strong> load a model → start Local Server (usually port <code>1234</code>) → pick provider “LM Studio”.</li>
+          <li><strong>Paper server:</strong> <code>Start-MCAI.cmd</code> or <code>scripts\Start-Server.ps1</code>, join <code>127.0.0.1:25565</code> on Java matching the configured version.</li>
+          <li><strong>Bot:</strong> <code>cd bot</code> → <code>npm start</code>. Restart the bot after saving LLM settings so all modules reload config.</li>
+          <li>Dashboard token defaults to <code>change-me-local-token</code> in local testing.</li>
+        </ul>
+      </section>
+    </main>
+
+    <script src="/setup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,23 @@
+name: MCAIBridge
+main: com.mcai.bridge.MCAIBridgePlugin
+version: 1.0.0-local
+api-version: "1.21"
+author: ModVinny
+description: Local-only safety and telemetry bridge for the MCAI Mineflayer bot.
+commands:
+  mcai:
+    description: MCAI bridge status and admin commands.
+    usage: /mcai <status|bridge|reload|events|regions|stopbot>
+permissions:
+  mcai.admin:
+    description: Allows MCAI bridge administration.
+    default: op
+  mcai.status:
+    description: Allows MCAI bridge status checks.
+    default: op
+  mcai.regions:
+    description: Allows MCAI region checks.
+    default: op
+  mcai.stopbot:
+    description: Allows emitting a local emergency stop event.
+    default: op

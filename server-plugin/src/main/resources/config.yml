@@ -1,0 +1,21 @@
+bridge:
+  enabled: true
+  host: "127.0.0.1"
+  port: 8791
+  require-token: true
+  token: "change-me-server-bridge-token"
+  allow-public-bind: false
+  allow-control: true
+  allow-dangerous-control: false
+  event-buffer-size: 500
+
+features:
+  events: true
+  regions: true
+  advancements: true
+  death-events: true
+  villager-events: true
+  emergency-stop: true
+  arbitrary-commands: false
+  teleport: false
+  give-items: false

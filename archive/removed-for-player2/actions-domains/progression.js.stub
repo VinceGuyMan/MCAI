@@ -1,0 +1,45 @@
+/**
+ * Progression / milestone OS was removed from the live Player-2 tree.
+ * Handlers remain so old chat/commands fail gracefully.
+ */
+export function createProgressionHandlers(ctx) {
+  const { say } = ctx;
+
+  function retired(name = 'progression') {
+    const message = `${name} was removed. No milestone OS — play with me as a companion (resources, home, camp, follow) instead.`;
+    say(message, true);
+    return { ok: false, retired: true, reason: 'progression_removed', message, evidence: ['progression_retired'] };
+  }
+
+  const names = [
+    'progressionStatusAction',
+    'progressionSummaryAction',
+    'progressionCheckAction',
+    'progressionMilestonesAction',
+    'progressionNextAction',
+    'progressionExplainMilestoneAction',
+    'progressionPathsAction',
+    'progressionPathAction',
+    'progressionPlanMilestoneAction',
+    'progressionCreateGoalAction',
+    'confirmProgressionGoalAction',
+    'progressionCreateCurriculumAction',
+    'confirmProgressionCurriculumAction',
+    'progressionMarkManualCompleteAction',
+    'confirmManualMilestoneCompleteAction',
+    'progressionMarkManualBlockedAction',
+    'confirmManualMilestoneBlockedAction',
+    'progressionResetAction',
+    'confirmProgressionResetAction',
+    'progressionHistoryAction',
+    'vanillaAdvancementStatusAction'
+  ];
+
+  const api = {
+    normalizeMilestoneInput: (input = '') => String(input || '').trim()
+  };
+  for (const name of names) {
+    api[name] = async () => retired(name.replace(/Action$/, ''));
+  }
+  return api;
+}

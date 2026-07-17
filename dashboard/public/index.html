@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>tj Dashboard</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>tj Dashboard</h1>
+        <p>Local telemetry and safe control for ModVinny.</p>
+      </div>
+      <div class="header-actions">
+        <a class="secondary button-link" href="/setup.html">Setup / LLM</a>
+        <button id="tokenButton" class="secondary">Set Token</button>
+        <button id="stopButton" class="danger">STOP</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="grid">
+        <article class="card" id="botCard">
+          <h2>Bot</h2>
+          <div class="metric-row"><span>Status</span><strong id="botConnected">-</strong></div>
+          <div class="metric-row"><span>Health</span><strong id="botHealth">-</strong></div>
+          <div class="metric-row"><span>Food</span><strong id="botFood">-</strong></div>
+          <div class="metric-row"><span>Position</span><strong id="botPosition">-</strong></div>
+          <div class="metric-row"><span>Dimension</span><strong id="botDimension">-</strong></div>
+        </article>
+
+        <article class="card">
+          <h2>Owner</h2>
+          <div class="metric-row"><span>Player</span><strong id="ownerName">ModVinny</strong></div>
+          <div class="metric-row"><span>Visible</span><strong id="ownerVisible">-</strong></div>
+          <div class="metric-row"><span>Distance</span><strong id="ownerDistance">-</strong></div>
+        </article>
+
+        <article class="card">
+          <h2>Safety</h2>
+          <div class="metric-row"><span>Hostiles</span><strong id="hostilesNearby">-</strong></div>
+          <div id="dangerFlags" class="chips"></div>
+        </article>
+
+        <article class="card">
+          <h2>Current Work</h2>
+          <div class="metric-row"><span>Task</span><strong id="currentTask">-</strong></div>
+          <div class="metric-row"><span>Skill</span><strong id="activeSkill">-</strong></div>
+          <div class="metric-row"><span>Curriculum</span><strong id="activeCurriculum">-</strong></div>
+          <div class="metric-row"><span>Goal</span><strong id="activeGoal">-</strong></div>
+        </article>
+
+        <article class="card">
+          <h2>Progression</h2>
+          <div class="metric-row"><span>Complete</span><strong id="progressionPercent">-</strong></div>
+          <div class="metric-row"><span>Milestones</span><strong id="progressionCount">-</strong></div>
+          <div class="metric-row"><span>Next</span><strong id="progressionNext">-</strong></div>
+          <div class="metric-row"><span>Blocked</span><strong id="progressionBlocked">-</strong></div>
+        </article>
+
+        <article class="card">
+          <h2>Gear</h2>
+          <div class="metric-row"><span>Armor Score</span><strong id="gearArmorScore">-</strong></div>
+          <div class="metric-row"><span>XP</span><strong id="gearXp">-</strong></div>
+          <div class="metric-row"><span>Lapis</span><strong id="gearLapis">-</strong></div>
+          <div class="metric-row"><span>Need</span><strong id="gearNeed">-</strong></div>
+          <div class="metric-row"><span>Brewing</span><strong id="gearBrewing">-</strong></div>
+        </article>
+
+        <article class="card">
+          <h2>Villagers</h2>
+          <div class="metric-row"><span>Nearby</span><strong id="villagersNearby">-</strong></div>
+          <div class="metric-row"><span>Known</span><strong id="villagersKnown">-</strong></div>
+          <div class="metric-row"><span>Villages</span><strong id="villagesKnown">-</strong></div>
+          <div class="metric-row"><span>Emeralds</span><strong id="emeraldCount">-</strong></div>
+          <div class="metric-row"><span>Known Trades</span><strong id="knownTrades">-</strong></div>
+        </article>
+
+        <article class="card">
+          <h2>Blueprints</h2>
+          <div class="metric-row"><span>Available</span><strong id="blueprintCount">-</strong></div>
+          <div class="metric-row"><span>Active</span><strong id="activeBuild">-</strong></div>
+          <div class="metric-row"><span>Placed</span><strong id="buildPlaced">-</strong></div>
+          <div class="metric-row"><span>Remaining</span><strong id="buildRemaining">-</strong></div>
+          <div class="metric-row"><span>Failed</span><strong id="buildFailed">-</strong></div>
+        </article>
+
+        <article class="card">
+          <h2>Server Bridge</h2>
+          <div class="metric-row"><span>Status</span><strong id="bridgeConnected">-</strong></div>
+          <div class="metric-row"><span>Health</span><strong id="bridgeHealth">-</strong></div>
+          <div class="metric-row"><span>Events</span><strong id="bridgeEvents">-</strong></div>
+          <div class="metric-row"><span>Last</span><strong id="bridgeLastEvent">-</strong></div>
+        </article>
+
+        <article class="card">
+          <h2>Natural Routing</h2>
+          <div class="metric-row"><span>Last</span><strong id="naturalLast">-</strong></div>
+          <div class="metric-row"><span>Pending</span><strong id="naturalPending">-</strong></div>
+          <div class="metric-row"><span>Learned</span><strong id="naturalLearned">-</strong></div>
+        </article>
+
+        <article class="card">
+          <h2>Competency</h2>
+          <div class="metric-row"><span>Reliable</span><strong id="competencyReliable">-</strong></div>
+          <div class="metric-row"><span>Improving</span><strong id="competencyImproving">-</strong></div>
+          <div class="metric-row"><span>Shaky</span><strong id="competencyShaky">-</strong></div>
+          <div class="metric-row"><span>Untested</span><strong id="competencyUntested">-</strong></div>
+        </article>
+      </section>
+
+      <section class="controls">
+        <h2>Safe Controls</h2>
+        <div class="button-row">
+          <button data-skill="status">Run Status</button>
+          <button data-skill="inventory_summary">Run Inventory</button>
+          <button data-skill="food_status">Run Food</button>
+          <button data-skill="nether_checklist">Run Nether Checklist</button>
+          <button data-skill="gear_status">Run Gear</button>
+          <button data-skill="enchant_status">Run Enchant Status</button>
+          <button data-skill="potion_status">Run Potions</button>
+          <button data-skill="brewing_status">Run Brewing</button>
+          <button data-skill="villager_status">Run Villagers</button>
+          <button data-skill="economy_status">Run Economy</button>
+          <button data-skill="blueprint_status">Run Blueprints</button>
+          <button data-skill="schematic_status">Run Schematic Status</button>
+          <button id="planStarterBlueprint" class="secondary">Plan Workstation</button>
+          <button id="continueBlueprint" class="secondary">Continue Build</button>
+          <button id="cancelBlueprint" class="secondary">Cancel Build</button>
+          <button data-skill="server_bridge_status">Run Bridge Status</button>
+          <button id="bridgeStop" class="secondary">Bridge Stop Test</button>
+          <button id="runCurriculumStep">Run Curriculum Step</button>
+          <button id="cancelCurriculum" class="secondary">Cancel Curriculum</button>
+        </div>
+        <p id="controlResult" class="status-line"></p>
+      </section>
+
+      <section class="split">
+        <article class="card">
+          <h2>Inventory</h2>
+          <ul id="inventoryList" class="list"></ul>
+        </article>
+        <article class="card">
+          <h2>Recent Evidence</h2>
+          <ul id="evidenceList" class="list"></ul>
+        </article>
+      </section>
+
+      <section class="split">
+        <article class="card">
+          <h2>Recent Skill Runs</h2>
+          <ul id="skillRunList" class="list"></ul>
+        </article>
+        <article class="card">
+          <h2>Villager Economy</h2>
+          <ul id="villagerList" class="list"></ul>
+        </article>
+      </section>
+
+      <section class="split">
+        <article class="card">
+          <h2>Known Trades</h2>
+          <ul id="tradeList" class="list"></ul>
+        </article>
+        <article class="card">
+          <h2>Blueprint History</h2>
+          <ul id="blueprintList" class="list"></ul>
+        </article>
+      </section>
+
+      <section class="split">
+        <article class="card">
+          <h2>Bridge Events</h2>
+          <ul id="bridgeEventList" class="list"></ul>
+        </article>
+        <article class="card">
+          <h2>Learned Commands</h2>
+          <ul id="learnedCommandList" class="list"></ul>
+        </article>
+      </section>
+
+      <section class="split">
+        <article class="card">
+          <h2>Recent Failures</h2>
+          <ul id="failureList" class="list"></ul>
+        </article>
+        <article class="card">
+          <h2>Recent Logs</h2>
+          <ul id="logList" class="log-list"></ul>
+        </article>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

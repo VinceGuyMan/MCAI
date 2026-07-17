@@ -1,0 +1,31 @@
+@echo off
+setlocal
+cd /d "%~dp0"
+
+REM All entry points go through Node (no PowerShell - Norton IDP safe path)
+
+where node >nul 2>&1
+if errorlevel 1 (
+  if exist "%ProgramFiles%\nodejs\node.exe" (
+    set "PATH=%ProgramFiles%\nodejs;%PATH%"
+  ) else if exist "%LocalAppData%\Programs\nodejs\node.exe" (
+    set "PATH=%LocalAppData%\Programs\nodejs;%PATH%"
+  )
+)
+
+where node >nul 2>&1
+if errorlevel 1 (
+  echo Node.js is required.
+  echo Install LTS from https://nodejs.org then run this again.
+  pause
+  exit /b 1
+)
+
+node "%~dp0launcher\aio-node.mjs"
+set "EXITCODE=%ERRORLEVEL%"
+if not "%EXITCODE%"=="0" (
+  echo.
+  echo Launcher exited with code %EXITCODE%.
+  pause
+)
+exit /b %EXITCODE%

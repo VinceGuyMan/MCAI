@@ -1,0 +1,46 @@
+/**
+ * Curriculum system was removed from the live Player-2 tree.
+ * Handlers remain so old chat/commands fail gracefully.
+ */
+export function createCurriculumHandlers(ctx) {
+  const { say } = ctx;
+
+  function retired(name = 'curriculum') {
+    const message = `${name} was removed. tj is a living companion now — use come here, gather resources, camp, and companion mode instead of skill curricula.`;
+    say(message, true);
+    return { ok: false, retired: true, reason: 'curriculum_removed', message, evidence: ['curriculum_retired'] };
+  }
+
+  const names = [
+    'curriculumStatusAction',
+    'suggestNextSkillsAction',
+    'suggestNextSkillAction',
+    'listCurriculumTracksAction',
+    'suggestCurriculumTrackAction',
+    'explainCurriculumAction',
+    'explainCurriculumSuggestionAction',
+    'curriculumHistoryAction',
+    'acceptCurriculumSuggestionAction',
+    'dismissCurriculumSuggestionAction',
+    'curriculumExecutionStatusAction',
+    'approveCurriculumSuggestionAction',
+    'approveCurriculumTrackAction',
+    'startApprovedCurriculumAction',
+    'executeNextCurriculumStepAction',
+    'pauseCurriculumAction',
+    'resumeCurriculumAction',
+    'cancelCurriculumAction',
+    'curriculumProgressAction',
+    'curriculumNextStepAction',
+    'curriculumExecutionHistoryAction',
+    'explainCurriculumBlockersAction'
+  ];
+
+  const api = {
+    formatSuggestionList: () => 'Curriculum removed.'
+  };
+  for (const name of names) {
+    api[name] = async () => retired(name.replace(/Action$/, ''));
+  }
+  return api;
+}

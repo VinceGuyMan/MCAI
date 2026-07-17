@@ -1,0 +1,371 @@
+MCAI / tj — In-game test command list
+=====================================
+Owner: ModVinny
+Bot: tj
+Project: F:\Games\MCAI
+
+How to use
+----------
+- Type commands in Minecraft chat as owner.
+- Most work as "tj ..." or plain "..." depending on routing.
+- Tick items with [x] as you pass them. Note fails under Notes.
+- Update this file when we add new features (iron path, dig, food, etc.).
+
+Last updated: 2026-07-17 (post P0–P2 iron-age work)
+
+
+==============================================================================
+1. QUICK START (do these first)
+==============================================================================
+
+[ ] tj help
+[ ] tj help survival
+[ ] tj status
+[ ] tj inventory
+[ ] tj come here
+[ ] tj follow me
+[ ] tj stop
+
+
+==============================================================================
+2. IRON-AGE PROGRESSION (main P0–P2 path)
+==============================================================================
+
+Step-by-step (recommended regression):
+
+[ ] tj get wood                    (or: tj gather wood)
+[ ] tj craft basic tools           (or: tj craft wooden tools / make wooden tools)
+[ ] tj mine stone                  (or: tj get stone)
+[ ] tj craft stone tools
+[ ] tj smelt charcoal              (or: tj make charcoal) — needs logs; may place furnace
+[ ] tj mine coal                   (or: tj get coal) — surface scout if none nearby
+[ ] tj craft torches
+[ ] tj mine iron                   (or: tj get iron / tj iron run) — surface loaded chunks
+[ ] tj smelt iron                  (or: tj smelt raw iron)
+[ ] tj craft iron tools
+[ ] tj craft iron armor            (only if enough ingots)
+[ ] tj tools
+[ ] tj armour                      (or: tj armor)
+[ ] tj gear                        (or: tj gear status)
+
+One-shot full macro:
+
+[ ] tj progress to iron
+    aliases: tj iron age | tj to iron | tj run core progress to iron
+
+Goal template (multi-step goals):
+
+[ ] tj get iron gear
+[ ] tj goals
+[ ] tj next step
+[ ] tj pause goal
+[ ] tj resume goal
+[ ] tj cancel goal
+
+Resume if interrupted:
+
+[ ] tj finish last job
+    aliases: tj continue mining | tj resume collection | tj finish job
+
+
+==============================================================================
+3. DRY DIG (dirt / sand / gravel / clay) — drown / path safety
+==============================================================================
+
+[ ] tj dig dirt          — dry dirt; skip / abort water
+[ ] tj dig sand          — dry sand only; may say "no safe dry sand"
+[ ] tj dig gravel        — collect gravel; should not stick forever
+[ ] tj dig clay          — clay when dry target available
+[ ] tj stop              — mid-dig cancel
+[ ] tj finish last job   — if sticky after dig/collect
+
+Natural-ish (if router hits):
+[ ] get dirt / get sand / need gravel / dig clay
+
+
+==============================================================================
+4. FOOD
+==============================================================================
+
+[ ] tj food              (or: tj food status)
+[ ] tj eat               (or: tj eat food)
+[ ] tj get food          (or: tj gather food / find food)
+[ ] tj cook food         (or: tj make food)
+[ ] tj hunt cows         (also: hunt pigs/sheep/chickens/rabbits; kill cows, etc.)
+[ ] tj fish for food     — needs rod + safe water
+[ ] tj search food       (or: tj locate food)
+
+Knowledge / dialogue (optional LLM):
+[ ] "what food do you know?"
+[ ] "do you know cooked beef?"
+[ ] "can you get bread?"
+
+
+==============================================================================
+5. CRAFTING / SMELTING EXTRAS
+==============================================================================
+
+[ ] tj craft planks
+[ ] tj craft sticks
+[ ] tj craft table                 (or: tj craft crafting table)
+[ ] tj craft torches               (or: tj craft torch)
+[ ] tj craft survival kit
+[ ] tj make pickaxe / make axe / make sword / make shovel / make hoe
+[ ] tj craft pickaxe / craft axe   (generic tool craft)
+[ ] tj smelt charcoal
+[ ] tj smelt iron
+[ ] tj craft iron tools
+[ ] tj craft stone tools
+[ ] tj craft basic tools
+[ ] tj craft iron armor
+[ ] tj craft leather armor
+
+
+==============================================================================
+6. MOVEMENT / COMPANION
+==============================================================================
+
+[ ] tj come here
+[ ] tj follow me
+[ ] tj stay                        (or: tj stay here)
+[ ] tj return to owner             (or: tj come back)
+[ ] tj unstuck                     (or: tj get unstuck)
+[ ] tj companion mode              (or: player 2 mode / coop mode)
+[ ] tj quiet mode
+[ ] tj careful mode
+[ ] tj helper mode
+
+Thin-core variants:
+[ ] tj thin come
+[ ] tj thin follow
+[ ] tj thin stay
+[ ] tj thin stop
+[ ] tj thin status
+[ ] tj thin eat
+[ ] tj thin remember home
+[ ] tj thin return home
+
+
+==============================================================================
+7. MINING / RESOURCES
+==============================================================================
+
+[ ] tj get wood / tj gather wood
+[ ] tj mine stone / tj get stone
+[ ] tj mine coal / tj get coal
+[ ] tj mine iron / tj get iron / tj iron run
+[ ] tj mining status
+[ ] tj resource run wood
+[ ] tj resource run stone
+[ ] tj resource run coal
+[ ] tj resource run iron
+[ ] tj prepare for mining
+
+
+==============================================================================
+8. INVENTORY / GEAR
+==============================================================================
+
+[ ] tj inventory                   (or: tj inv / what do you have)
+[ ] tj tools                       (or: tj tool status)
+[ ] tj equip pickaxe
+[ ] tj equip axe
+[ ] tj equip shovel
+[ ] tj equip sword
+[ ] tj equip stone pickaxe
+[ ] tj equip iron pickaxe
+[ ] tj armour / tj armor
+[ ] tj equip armour
+[ ] tj gear / tj gear status
+[ ] tj collect drops               (or: tj pick up items)
+[ ] tj give item to owner
+[ ] tj inventory summary
+[ ] tj count inventory
+
+
+==============================================================================
+9. BASE / STORAGE / CAMP
+==============================================================================
+
+[ ] tj set home
+[ ] tj home / tj home status
+[ ] tj return home
+[ ] tj make camp
+[ ] tj build shelter
+[ ] tj build workstation
+[ ] tj light home
+[ ] tj place torch
+[ ] tj place chest / tj place storage chest
+[ ] tj register chest
+[ ] tj storage / tj storage status
+[ ] tj store items
+[ ] tj bring me <item>
+[ ] tj maintain base
+
+
+==============================================================================
+10. STATUS / DEBUG (useful while testing)
+==============================================================================
+
+[ ] tj status
+[ ] tj safety status
+[ ] tj task status
+[ ] tj core status
+[ ] tj core macros
+[ ] tj plugin status
+[ ] tj debug / tj brain
+[ ] tj natural test
+[ ] tj core test
+[ ] tj what did you think i meant
+[ ] tj competency / tj what needs testing
+[ ] tj test plan
+[ ] tj test survival basics
+[ ] tj test report
+[ ] tj skills
+[ ] tj skill audit
+
+
+==============================================================================
+11. KNOWLEDGE CHECKS (chat — not /give)
+==============================================================================
+
+[ ] "do you know dirt / sand / gravel / clay?"
+[ ] "what blocks can you dig?"
+[ ] "what food items do you know?"
+[ ] "can you smelt charcoal?"
+[ ] "how do we get iron tools?"
+
+Expect: grounded knowledge lists.
+Do NOT expect: inventing glass/bricks as dig targets, or auto /give kits
+unless kit is intentionally enabled.
+
+
+==============================================================================
+12. INTENTIONAL FAILS / EDGE CASES
+==============================================================================
+
+[ ] tj kit                         — refuse or no-op if kit disabled
+[ ] tj mine diamond                — blocked / confirmation / not 1.0
+[ ] dig sand in/near water         — abort, surface, no drown loop
+[ ] tj mine iron with no ore       — clear "none found" / scout miss
+[ ] low O2 mid dig                 — abort dig, head for air
+[ ] progress to iron → tj stop     — stops cleanly mid-macro
+[ ] craft iron tools with 0 iron   — honest missing-materials reply
+[ ] sticky gravel path             — finish last job / stop recovers
+
+
+==============================================================================
+13. OPTIONAL LATER SYSTEMS (not iron-critical)
+==============================================================================
+
+Farming:
+[ ] tj make farm / tj make wheat farm
+[ ] tj maintain farm
+[ ] tj harvest crops
+[ ] tj plant wheat
+[ ] tj farming status
+
+Combat:
+[ ] tj threat scan
+[ ] tj protect me
+[ ] tj combat status
+
+Explore:
+[ ] tj scan area
+[ ] tj scout north / south / east / west
+[ ] tj known places
+[ ] tj remember this as <name>
+[ ] tj map status
+
+Nether:
+[ ] tj nether checklist
+[ ] tj prepare for nether
+[ ] tj portal status
+[ ] tj light portal          (confirmation)
+[ ] tj enter nether          (confirmation)
+
+Villagers:
+[ ] tj scan villagers
+[ ] tj trading status
+[ ] tj inspect trades
+[ ] tj best trades
+[ ] tj suggest trades
+
+Blueprints:
+[ ] tj list blueprints
+[ ] tj preview small shelter
+[ ] tj materials for small shelter
+[ ] tj plan build small shelter
+[ ] tj build small shelter   (confirmation)
+[ ] tj confirm build
+[ ] tj continue build
+[ ] tj cancel build
+
+Idle / modes:
+[ ] tj idle on
+[ ] tj idle off
+[ ] tj quiet idle
+[ ] tj chatty idle
+[ ] tj idle status
+
+
+==============================================================================
+14. SUGGESTED PLAYTEST ORDER (one session)
+==============================================================================
+
+1. Smoke:     help → status → come here → stop
+2. Step iron: section 2 commands 1–11 (fresh or nearly empty inv)
+3. Dry dig:   dirt + sand (stress sand near water)
+4. Food:      get food / eat
+5. Full macro: second world or cleared bot inv → tj progress to iron
+6. Interrupt: mid-job stop + finish last job
+7. Dialogue:  knowledge questions (section 11)
+8. Extras:    camp / storage / idle only after iron path is solid
+
+
+==============================================================================
+15. SURVIVAL SHORTLIST (what "tj help survival" should show)
+==============================================================================
+
+come here / follow me / stop
+· get wood / craft basic tools / mine stone / craft stone tools
+· smelt charcoal / mine coal / craft torches
+· mine iron / smelt iron / craft iron tools / craft iron armor
+· progress to iron (full path)
+· get food / dig dirt|sand|gravel|clay / status / help survival
+
+
+==============================================================================
+16. NOTES / BUGS FOUND DURING TESTING
+==============================================================================
+
+Date       | Command / scenario              | Result / bug
+-----------+---------------------------------+------------------------------
+2026-07-17 | progress to iron / iron age     | FIXED: was "not in allowed list"
+2026-07-17 | can you smelt charcoal?         | FIXED: was macro allow-list + Q→job
+2026-07-17 | how do we get iron tools?       | FIXED: was start collect iron
+2026-07-17 | did you find food?              | FIXED: was re-run food collect
+2026-07-17 | get iron gear                   | FIXED: collect_resource capability
+2026-07-17 | drown on follow / flee          | Mitigated: dry path on come/follow
+2026-07-17 | dig thrashing / incomplete tree | Mitigated: cluster + one-by-one
+2026-07-17 | coal/iron none nearby           | Scout radius raised (~96m, more legs)
+2026-07-17 | double "On it" chat             | FIXED: single collect narration
+2026-07-17 | kit                             | LEFT ON for testing (starterKitEnabled)
+
+
+==============================================================================
+17. CHANGELOG FOR THIS FILE
+==============================================================================
+
+2026-07-17  Initial list after P0–P2 iron-age work (craft tools, smelt,
+            surface ore, dry dig, progress_to_iron, food knowledge).
+2026-07-17  Post-test fixes: macro allow-list, question gate, dry follow,
+            collect stickiness, ore scout radius, pickaxe detect, food net gain.
+2026-07-17  Crystallize pass: no chest-deposit collect, tree/ore veins,
+            movement mutex (job>flee), real ore scout legs, soft macro steps,
+            soft dry for stone/ore, dashboard EADDRINUSE quiet.
+2026-07-17  Inv full free/store+toss; smelt putInput .type; GoalLookAtBlock trees;
+            stone walk scout; current goal code path; quieter macros.
+
+(Add lines below when we ship new testable commands.)
+)

@@ -1,0 +1,78 @@
+# --- Runtime / local machine (never commit) ---
+.runtime/
+.test-memory/
+.console_history
+*.log
+*.lck
+hs_err_pid*.log
+replay_*.log
+
+# --- Minecraft server runtime ---
+logs/
+crash-reports/
+world/
+world_*/
+world-*/
+cache/
+libraries/
+versions/
+plugins/
+*.jar
+!server-plugin/**/*.jar
+
+# Paper / Spigot local config that may contain seeds or personal settings
+server.properties
+eula.txt
+ops.json
+usercache.json
+whitelist.json
+banned-ips.json
+banned-players.json
+permissions.yml
+help.yml
+commands.yml
+bukkit.yml
+spigot.yml
+version_history.json
+
+# --- Secrets & personal config ---
+config.json
+bot/.env
+.env
+.env.*
+!.env.example
+
+# --- Persistent bot memory / session (personal play data) ---
+memory.json
+*-memory.json
+session-log.jsonl
+goals.json
+map-memory.json
+conversation-memory.json
+command-learning-memory.json
+blueprint-memory.json
+gear-memory.json
+idle-memory.json
+skill-memory.json
+villager-memory.json
+
+# --- Node ---
+node_modules/
+bot/node_modules/
+dashboard/node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*~
+
+# --- Local test artifacts ---
+.session/
+*.bak
+*.tmp

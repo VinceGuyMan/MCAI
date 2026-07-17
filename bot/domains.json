@@ -1,0 +1,165 @@
+{
+  "$schema_comment": "Machine-readable domain registry for MCAI. Tiers: 0=core, 1=support, 2=parked advanced, 3=tooling.",
+  "version": 1,
+  "path": "F:/Games/MCAI",
+  "entry": "bot.js",
+  "defaultPolicy": {
+    "thinCoreEnabled": true,
+    "playMode": "companion",
+    "companionSoftFollow": true,
+    "companionTaskNarration": true,
+    "companionStuckRecovery": true,
+    "parkedFlagsMustBeFalse": [
+      "advancedAutonomyEnabled",
+      "curriculumExecutionEnabled",
+      "progressionExecutionEnabled",
+      "villagerSystemEnabled",
+      "netherSystemEnabled",
+      "blueprintSystemEnabled",
+      "experimentalCombatEnabled"
+    ]
+  },
+  "godFiles": [
+    { "file": "actions.js", "note": "Primary maintainability debt; split next" },
+    { "file": "commandRegistry.js", "note": "Large command surface" },
+    { "file": "chat.js", "note": "Large chat router" }
+  ],
+  "domains": [
+    {
+      "id": "boot",
+      "tier": 0,
+      "targetDir": "core",
+      "files": ["bot.js", "config.js", "configSchema.js", "logger.js", "memory.js", "memorySafeWrite.js", "cancellation.js", "taskQueue.js", "perception.js", "safety.js"]
+    },
+    {
+      "id": "plugins",
+      "tier": 0,
+      "targetDir": "core",
+      "files": ["pluginLoader.js", "pluginStatus.js", "pluginWrappers.js"]
+    },
+    {
+      "id": "thin_core",
+      "tier": 0,
+      "targetDir": "core",
+      "configFlag": "thinCoreEnabled",
+      "files": ["thinCore.js", "actionGate.js", "confirmationManager.js", "coreIntentRouter.js", "coreMacros.js", "coreObservation.js", "coreRecovery.js", "competentCore.js", "companionMode.js"]
+    },
+    {
+      "id": "chat_commands",
+      "tier": 0,
+      "targetDir": "core",
+      "files": ["chat.js", "commandParser.js", "commandRegistry.js", "typoNormalizer.js", "naturalCommandMap.js", "naturalCommandRouter.js", "naturalIntentClassifier.js"]
+    },
+    {
+      "id": "llm",
+      "tier": 0,
+      "targetDir": "core",
+      "files": ["ollama.js", "llmRateLimit.js", "planner.js", "brain.js", "actions.js"]
+    },
+    {
+      "id": "survival_basics",
+      "tier": 0,
+      "targetDir": "systems/survival",
+      "files": ["inventory.js", "homeBase.js", "crafting.js", "armor.js", "food.js", "storage.js", "sessionRecorder.js"]
+    },
+    {
+      "id": "base_building",
+      "tier": 1,
+      "targetDir": "systems/base",
+      "files": ["placement.js", "lighting.js", "builder.js", "baseMaintenance.js", "resourceRuns.js", "smelting.js"]
+    },
+    {
+      "id": "mining",
+      "tier": 1,
+      "targetDir": "systems/mining",
+      "files": ["mining.js", "miningSafety.js", "miningTools.js", "mineLayout.js", "oreScanner.js"]
+    },
+    {
+      "id": "farming",
+      "tier": 1,
+      "targetDir": "systems/farming",
+      "files": ["cropUtils.js", "hoeTools.js", "farming.js", "animalPens.js", "animalCare.js", "farmStorage.js"]
+    },
+    {
+      "id": "exploration",
+      "tier": 1,
+      "targetDir": "systems/exploration",
+      "files": ["mapMemory.js", "worldScanner.js", "biomeMemory.js", "waypointNavigator.js", "routeMemory.js", "exploration.js"]
+    },
+    {
+      "id": "dialogue",
+      "tier": 1,
+      "targetDir": "systems/dialogue",
+      "files": ["dialogue.js", "dialogueContext.js", "dialogueSafety.js", "responseGenerator.js", "personality.js", "conversationMemory.js", "intentClassifier.js", "socialRules.js", "eventDialogue.js", "ambientDialogue.js"]
+    },
+    {
+      "id": "planning_skills",
+      "tier": 1,
+      "targetDir": "systems/planning",
+      "files": ["goals.js", "goalTemplates.js", "goalValidator.js", "goalExecutor.js", "progressTracker.js", "advisor.js", "plannerState.js", "planReview.js", "strategicPlanner.js", "skillRegistry.js", "skillValidator.js", "skillMemory.js", "skillRunner.js", "progressEvidence.js", "capabilities.js"]
+    },
+    {
+      "id": "learning_idle",
+      "tier": 1,
+      "targetDir": "systems/learning",
+      "files": ["commandLearningMemory.js", "selfCorrection.js", "competencyTracker.js", "idleAutonomy.js", "idleDecision.js", "idleMemory.js", "idleSpeech.js"]
+    },
+    {
+      "id": "combat",
+      "tier": 2,
+      "targetDir": "systems/combat",
+      "configFlag": "experimentalCombatEnabled",
+      "parked": true,
+      "files": ["combat.js", "combatEquipment.js", "combatMovement.js", "threatAssessment.js", "baseDefense.js", "ownerDefense.js"]
+    },
+    {
+      "id": "curriculum",
+      "tier": 2,
+      "removed": true,
+      "note": "Removed for Player-2 focus. Code under archive/removed-for-player2/systems/curriculum"
+    },
+    {
+      "id": "progression",
+      "tier": 2,
+      "removed": true,
+      "note": "Removed for Player-2 focus. Code under archive/removed-for-player2/systems/progression"
+    },
+    {
+      "id": "nether",
+      "tier": 2,
+      "targetDir": "systems/nether",
+      "configFlag": "netherSystemEnabled",
+      "parked": true,
+      "files": ["netherPrep.js", "netherGear.js", "netherMemory.js", "netherSafety.js", "netherScout.js", "portalManager.js"]
+    },
+    {
+      "id": "gear",
+      "tier": 2,
+      "targetDir": "systems/gear",
+      "parked": true,
+      "files": ["gearScore.js", "gearMemory.js", "gearSafety.js", "gearUpgradeSystem.js", "enchanting.js", "anvilSystem.js", "potionSystem.js", "brewing.js"]
+    },
+    {
+      "id": "villagers",
+      "tier": 2,
+      "targetDir": "systems/villagers",
+      "configFlag": "villagerSystemEnabled",
+      "parked": true,
+      "files": ["villagerMemory.js", "villagerScanner.js", "villagerTrading.js", "tradeScoring.js", "economyManager.js", "tradeSafety.js", "villageProtection.js", "villagerEconomy.js"]
+    },
+    {
+      "id": "blueprints",
+      "tier": 2,
+      "targetDir": "systems/blueprints",
+      "configFlag": "blueprintSystemEnabled",
+      "parked": true,
+      "files": ["blueprintRegistry.js", "blueprintMemory.js", "materialEstimator.js", "blueprintPlanner.js", "blueprintSafety.js", "blueprintBuilder.js", "blueprintPreview.js", "schematicImport.js", "blueprintSystem.js"]
+    },
+    {
+      "id": "meta",
+      "tier": 3,
+      "removed": true,
+      "note": "Orphan audit modules removed (coreInvariants, safetyAudit)"
+    }
+  ]
+}

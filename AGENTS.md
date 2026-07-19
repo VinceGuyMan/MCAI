@@ -7,7 +7,7 @@ MCAI is a local Minecraft companion bot built around:
 - A local Paper Minecraft server
 - A physical Mineflayer player
 - Deterministic commands, action routers, plugins, and macros
-- Optional local Ollama models for dialogue, intent classification, and planning hints
+- Optional local Ollama models for dialogue, intent classification, and bounded planning hints
 - A local-only dashboard and optional experimental Paper bridge
 
 The current product goal is a reliable surface-level companion that can follow the owner and progress through wood, stone, fuel, and iron.
@@ -50,7 +50,7 @@ Do not introduce a cloud requirement unless the owner explicitly requests it.
 
 MCAI is designed for a local private environment.
 
-Never modify the project to casually expose these services publicly:
+Never casually expose these services publicly:
 
 - Minecraft server port `25565`
 - Dashboard port `8787`
@@ -72,7 +72,7 @@ A successful local test is not proof that a service is safe for public hosting.
 
 ## Architecture priorities
 
-Use the repository's current tiers when deciding what to modify.
+Use the repository's current tier model when deciding what to modify.
 
 ### Tier 0: protect first
 
@@ -95,10 +95,8 @@ A regression in Tier 0 is more serious than losing an experimental feature.
 Examples include:
 
 - Mining and resource runs
-- Farming
-- Animals
-- Exploration
-- Waypoints and map memory
+- Farming and animals
+- Exploration, waypoints, and map memory
 - Dialogue and personality
 - Goal and skill status
 
@@ -125,7 +123,7 @@ Preserve the default thin-core policy unless the task specifically requires chan
 
 ## Important files
 
-Read the relevant parts of these files before substantial changes:
+Read relevant parts of these files before substantial changes:
 
 - `README.md`
 - `ARCHITECTURE.md`
@@ -173,7 +171,7 @@ Before making changes:
 3. Do not overwrite, revert, or reformat unrelated work.
 4. Inspect the relevant entry points and their callers.
 5. Identify the system tier affected by the proposed change.
-6. Inspect the matching configuration flags and schema.
+6. Inspect matching configuration flags and schema.
 7. Inspect existing tests and audit scripts for that domain.
 8. State any material assumptions.
 9. Choose the smallest coherent solution.
@@ -218,8 +216,7 @@ Preserve or improve:
 - Dry-path digging
 - Health and hunger checks
 - Distance limits
-- Timeouts
-- Retry limits
+- Timeouts and retry limits
 - Tool checks
 - Inventory-space checks
 - Confirmation requirements
@@ -228,7 +225,7 @@ Preserve or improve:
 - Honest failure reporting
 - Return-to-owner or return-home behavior
 
-Do not loosen a safety limit just to make a test or demo succeed.
+Do not loosen a safety limit merely to make a test or demo succeed.
 
 A bot that safely refuses an unsafe action is behaving better than a bot that performs it unreliably.
 
@@ -269,8 +266,7 @@ Never commit or expose:
 - Map memory
 - World folders
 - Paper server configuration
-- Server logs
-- Crash reports
+- Server logs and crash reports
 - Paper or Minecraft jars
 - `node_modules`
 - Dashboard or bridge tokens
@@ -289,13 +285,13 @@ When an action cannot complete:
 - Explain what stopped it
 - Preserve cancellation state
 - Avoid claiming resources were collected when they were not
-- Avoid silently switching to a riskier behavior
+- Avoid silently switching to riskier behavior
 - Include enough context for debugging without exposing secrets
 - Return a structured failure where the surrounding API expects one
 
 Partial success must be labeled as partial success.
 
-Do not swallow exceptions that indicate broken plugin state, unsafe navigation, corrupted configuration, or failed persistence.
+Do not swallow exceptions indicating broken plugin state, unsafe navigation, corrupted configuration, or failed persistence.
 
 ## Testing requirements
 
@@ -311,7 +307,7 @@ npm run test:thin-core
 npm run test:competent-core
 ```
 
-Run targeted tests for the changed domain when available, such as:
+Run targeted tests for the changed domain when available, including:
 
 ```bash
 npm run test:plugins
@@ -321,7 +317,7 @@ npm run test:bridge
 npm run dashboard:test
 ```
 
-Use the corresponding audit scripts when they provide meaningful coverage.
+Use corresponding audit scripts when they provide meaningful coverage.
 
 For gameplay changes, perform or clearly request an in-game smoke test using commands such as:
 
@@ -350,7 +346,7 @@ For dashboard changes:
 - Keep controls bounded and cancellable
 - Include useful disconnected and error states
 - Preserve responsiveness and keyboard accessibility
-- Do not create a remote administration surface by accident
+- Do not create a remote administration surface accidentally
 
 ## Dependencies
 
@@ -416,7 +412,7 @@ Before calling a task complete:
 6. Check for secret or personal-data exposure.
 7. Remove debug output and temporary files.
 8. Update affected documentation.
-9. Identify any behavior that still requires in-game verification.
+9. Identify behavior that still requires in-game verification.
 
 The final response must report:
 

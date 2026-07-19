@@ -252,6 +252,7 @@ function pos(bot) {
 }
 
 function logThinAction(action, args, context, result, extra = {}) {
+  const bot = context.bot || null;
   const payload = {
     timestamp: now(),
     requestedCommand: context.rawText || context.command || '',
@@ -260,6 +261,17 @@ function logThinAction(action, args, context, result, extra = {}) {
     safetyDecision: result.ok ? 'allowed' : 'rejected_or_failed',
     pluginWrapperUsed: extra.pluginWrapperUsed || result.data?.usedPlugin || result.evidence?.pluginWrapperUsed || null,
     result: result.ok ? 'ok' : 'failed',
+    reason: result.ok ? null : (result.reason || result.message || 'unknown failure'),
+    message: result.message || result.reason || null,
+    durationMs: Number(extra.durationMs || 0),
+    position: pos(bot),
+    health: Number.isFinite(Number(bot?.health)) ? Number(bot.health) : null,
+    food: Number.isFinite(Number(bot?.food)) ? Number(bot.food) : null,
+    oxygen: Number.isFinite(Number(bot?.oxygenLevel)) ? Number(bot.oxygenLevel) : null,
+    waterRescue: result.data?.waterRescue
+      || result.data?.wrapper?.data?.waterRescue
+      || result.evidence?.waterRescue
+      || null,
     evidence: result.evidence || {},
     error: result.error || null
   };
@@ -268,18 +280,19 @@ function logThinAction(action, args, context, result, extra = {}) {
 }
 
 async function withThinLogging(action, args, context, fn) {
+  const startedAt = now();
   try {
     const result = await fn();
-    logThinAction(action, args, context, result);
+    logThinAction(action, args, context, result, { durationMs: now() - startedAt });
     return result;
   } catch (error) {
     if (isCancelledError(error)) {
       const result = fail('Cancelled.', 'cancelled', { taskStatus: 'cancelled' }, {}, asError(error));
-      logThinAction(action, args, context, result);
+      logThinAction(action, args, context, result, { durationMs: now() - startedAt });
       return result;
     }
     const result = fail(`${action} failed: ${error.message || String(error)}`, error.message || String(error), {}, {}, asError(error));
-    logThinAction(action, args, context, result);
+    logThinAction(action, args, context, result, { durationMs: now() - startedAt });
     return result;
   }
 }
@@ -400,16 +413,29 @@ export async function stop(bot, memory, args = {}, context = {}) {
     context.cancellation?.cancelAll?.('thin core stop');
     context.taskQueue?.clearTask?.();
     clearMovement(bot);
+    // Cancel water rescue claim so follow/come is not stuck on emergency p=90
+    try {
+      const water = await import('./waterRescue.js');
+      water.abortWaterRescue?.(memory);
+      const move = await import('./movementController.js');
+      move.releaseMove?.(memory, null, { force: true, clearMode: true });
+    } catch {
+      memory?.update?.({ moveClaim: null, waterRescueAbort: true });
+    }
     memory?.update?.({
       currentTask: null,
       thinCoreTaskActive: false,
       activeThinCoreAction: null,
       thinCoreTaskStartedAt: 0,
       activeResourceRun: null,
+      fishingActive: false,
       activeMiningExpedition: null,
       activeExploration: null,
       followOwnerActive: false,
       movementMode: null,
+      moveClaim: null,
+      waterRescueAbort: true,
+      lastManualStopAt: now(),
       lastAction: 'thin core stop',
       lastActionAt: now()
     });
@@ -463,18 +489,59 @@ export async function come_to_owner(bot, memory, args = {}, context = {}) {
     } finally {
       clearThinTaskActive(memory, 'come_to_owner', { followOwnerActive: false, lastAction: 'thin core come_to_owner', lastActionAt: now() });
     }
-    // If still in water after path, try shore rescue once.
+    // Preserve a successful water arrival. Being wet beside the owner should
+    // surface in place, not immediately send the bot to a distant shore.
+    const arrivalDistance = ownerDistance(bot, ownerName);
+    const reachedOwner = Boolean(
+      result?.ok
+      && arrivalDistance !== null
+      && arrivalDistance <= targetDistance + 2
+    );
     try {
-      const { botIsInFluid, rescueFromWater } = await import('./waterRescue.js');
-      if (botIsInFluid(bot)) {
-        await rescueFromWater(bot, {
+      const water = await import('./waterRescue.js');
+      const recoveryMode = typeof water.waterRecoveryMode === 'function'
+        ? water.waterRecoveryMode(bot, {
+          reachedTarget: reachedOwner,
+          surfaceOxygenThreshold: ctx.config.waterSurfaceOxygenThreshold
+        })
+        : (water.botIsInFluid(bot) ? 'shore_rescue' : 'none');
+      if (recoveryMode === 'surface_near_target') {
+        const owner = bot?.players?.[ownerName]?.entity;
+        await water.surfaceForAir?.(bot, {
+          memory,
+          toward: owner?.position || null,
+          maxMs: 3000,
+          cancellation: context.cancellation || bot?.mcaiCancellation
+        });
+        const criticalOxygen = Number(bot?.oxygenLevel ?? 20)
+          <= Number(ctx.config.waterCriticalOxygenThreshold || 8);
+        if (criticalOxygen && water.botHeadInFluid?.(bot)) {
+          await water.rescueFromWater(bot, {
+            memory,
+            ownerUsername: ownerName,
+            timeoutMs: 30000,
+            cancellation: context.cancellation || bot?.mcaiCancellation,
+            force: true
+          });
+        }
+      } else if (recoveryMode === 'shore_rescue') {
+        await water.rescueFromWater(bot, {
           memory,
           ownerUsername: ownerName,
-          timeoutMs: 18000
+          timeoutMs: 30000,
+          cancellation: context.cancellation || bot?.mcaiCancellation,
+          force: true
+        });
+      }
+      if (reachedOwner && ['hold_near_target', 'surface_near_target'].includes(recoveryMode)) {
+        const holdMs = Number(ctx.config.waterOwnerHoldMs || 12000);
+        memory?.update?.({
+          lastWaterRescueAt: now(),
+          waterOwnerHoldUntil: now() + holdMs
         });
       }
     } catch {
-      // ignore
+      // Best effort; the movement result below remains authoritative.
     }
     const distance = ownerDistance(bot, ownerName);
     const closeEnough = distance !== null && distance <= targetDistance + 1.5;
@@ -1093,6 +1160,7 @@ function thinRefuse(intent, speak, reason, alternatives = []) {
     reason,
     source: 'thin_core'
   };
+
 }
 
 function thinAnswer(intent, speak, reason = 'Informational question — answer only, no job started.') {
@@ -1200,6 +1268,23 @@ export function routeThinCoreIntent(text, context = {}) {
     alternatives: [],
     source: 'thin_core'
   };
+
+  // Live safety questions must inspect the world instead of falling into generic knowledge Q&A.
+  if (
+    /^(what|which|any|is there|are there|tell me).{0,20}\b(danger|threats?|hostiles?|mobs?)\b/.test(normalized)
+    || /\b(danger|threats?|hostiles?|mobs?).{0,20}\b(nearby|around|there|close|by us|by me)\b/.test(normalized)
+    || /^(are we safe|is it safe|what is attacking you|what hurt you)$/.test(normalized)
+  ) {
+    return {
+      ...base,
+      intent: 'threat_scan',
+      canonicalCommand: 'tj threat scan',
+      action: 'threat_scan',
+      thinAction: null,
+      args: {},
+      reason: 'Matched a live danger question.'
+    };
+  }
 
   // Knowledge / Q&A first — never treat "how do we get iron tools?" as collect iron.
   if (isInformationalOwnerQuery(text)) {

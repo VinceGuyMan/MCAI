@@ -36,8 +36,11 @@ exists('test/plugin-wrappers.test.js');
 exists('test/plugins-status.test.js');
 
 const wrappers = read('pluginWrappers.js');
-if (/mineflayer-collectblock/.test(wrappers) && /is not loaded/.test(wrappers)) pass('collectBlock wrapper fails honestly when missing');
-else fail('collectBlock wrapper fails honestly when missing');
+if (/digOneBlockDirect/.test(wrappers) && /collectBlock\?\.collect/.test(wrappers) && /mineflayer-pathfinder/.test(wrappers)) {
+  pass('collection wrapper has a safe direct-dig path and explicit collectBlock fallback');
+} else {
+  fail('collection wrapper has a safe direct-dig path and explicit collectBlock fallback');
+}
 if (/mineflayer-tool/.test(wrappers) && /is not loaded/.test(wrappers)) pass('tool wrapper fails honestly when missing');
 else fail('tool wrapper fails honestly when missing');
 if (/allowFallbackWithoutPlugin/.test(wrappers)) pass('fallback is explicit and config-gated');
@@ -53,7 +56,7 @@ else fail('gather/mine core macros use collection wrapper action');
 if (!/actionStep\('resource_run_|actionStep\('mine_(stone|coal|iron)'/.test(macros)) pass('core gather/mine macros do not silently use old weak action path');
 else fail('core gather/mine macros still reference old gather/mine action path');
 
-const actions = read('actions.js');
+const actions = `${read('actions.js')}\n${read('actions/createActions.js')}`;
 for (const action of ['mineflayer_plugin_status', 'plugin_wrapper_status', 'plugin_path_to_owner', 'plugin_collect_blocks']) {
   if (actions.includes(action)) pass(`action registered: ${action}`);
   else fail(`action registered: ${action}`);

@@ -17,7 +17,7 @@ Target models: local Ollama optional; default dialogue-oriented small model (see
 ## Required For 1.0
 
 - Bot connects as `tj`.
-- Only `ModVinny` can command actions.
+- Only the username configured as `ownerUsername` can command actions.
 - Emergency stop works everywhere practical.
 - Status/help commands work.
 - Follow/come/stay work.

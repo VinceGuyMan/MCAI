@@ -92,6 +92,8 @@ async function routeChatCommand(rawText) {
     mineIron: record('mineIron'),
     mineStone: record('mineStone'),
     mineflayerPluginStatus: record('mineflayerPluginStatus'),
+    threatScan: record('threatScan'),
+    fishForFood: record('fishForFood'),
     equipTool: record('equipTool'),
     followOwner: record('followOwner'),
     gatherWood: record('gatherWood'),
@@ -458,8 +460,8 @@ test('direct chat compatibility aliases are represented in command registry', as
 
 test('exact direct chat command strings have registry compatibility coverage', async () => {
   const chatSource = fs.readFileSync(new URL('../chat.js', import.meta.url), 'utf8');
-  const exactCommands = [...chatSource.matchAll(/command\s*===\s*['"]([^'"]+)['"]/g)]
-    .map((match) => match[1])
+  const exactCommands = [...chatSource.matchAll(/command\s*===\s*(['"])(.*?)\1/g)]
+    .map((match) => match[2])
     .filter((command) => command !== 'don');
   const missing = [...new Set(exactCommands)]
     .filter((command) => !findCommandAlias(`tj ${command}`))
@@ -602,6 +604,9 @@ test('critical exact chat commands route to their command actions', async () => 
   assert.deepEqual(await routeChatCommand('tj mine stone'), { name: 'mineStone', args: [1] });
   assert.deepEqual(await routeChatCommand('tj get wood'), { name: 'resourceRunWood', args: [16] });
   assert.deepEqual(await routeChatCommand('tj find coal'), { name: 'mineCoal', args: [8] });
+  assert.deepEqual(await routeChatCommand('tj what danger is there'), { name: 'threatScan', args: [] });
+  assert.deepEqual(await routeChatCommand('tj keep fishing'), { name: 'fishForFood', args: [{ continuous: true }] });
+  assert.deepEqual(await routeChatCommand('tj fish until i say stop'), { name: 'fishForFood', args: [{ continuous: true }] });
 });
 
 test('action argument adapter preserves object-style counts, items, and tools', async () => {
@@ -942,7 +947,7 @@ test('memory loader clears expired pending confirmations', async () => {
   assert.equal(store.get().pendingCraftScavengeConfirmation, null);
 });
 
-test('skill and curriculum tests write default memory to test memory directory', async () => {
+test('skill tests isolate default memory and retired curriculum does not write', async () => {
   const testMemoryDir = path.resolve(__dirname, '..', '..', '.test-memory', String(process.pid));
   const skillFile = path.join(testMemoryDir, 'skill-memory.json');
   const curriculumFile = path.join(testMemoryDir, 'curriculum-memory.json');
@@ -952,7 +957,7 @@ test('skill and curriculum tests write default memory to test memory directory',
   saveCurriculumMemory({ version: 1, createdAt: Date.now(), updatedAt: Date.now(), lastSuggestions: [] });
 
   assert.equal(fs.existsSync(skillFile), true);
-  assert.equal(fs.existsSync(curriculumFile), true);
+  assert.equal(fs.existsSync(curriculumFile), false);
   assert.equal(loadSkillMemory().version, 1);
-  assert.equal(loadCurriculumMemory().version, 1);
+  assert.equal(loadCurriculumMemory().retired, true);
 });

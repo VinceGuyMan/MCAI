@@ -46,6 +46,29 @@ export function createSurvivalHandlers(ctx) {
     GoalNear,
     getResourceRunAction
   } = ctx;
+  let fishingPromise = null;
+
+  function dangerSummary(world = {}) {
+    const hostiles = Array.isArray(world.nearbyHostiles) ? world.nearbyHostiles : [];
+    const parts = hostiles.slice(0, 4).map((threat) => {
+      const name = String(threat?.name || 'hostile').replace(/_/g, ' ');
+      return Number.isFinite(Number(threat?.distance)) ? `${name} ${Math.round(Number(threat.distance))} blocks away` : name;
+    });
+    if (world.dangerFlags?.lavaNearby) parts.push('lava nearby');
+    if (world.dangerFlags?.fireNearby) parts.push('fire nearby');
+    return parts.join(', ');
+  }
+
+  function maybeSaySafetyMovement(message) {
+    const now = Date.now();
+    const mem = memory.get();
+    const lastAt = Math.max(Number(mem.lastSafetyMovementChatAt || 0), Number(mem.lastSafetyWarningAt || 0));
+    const cooldown = Number(config.safetyMovementChatCooldownMs || 60000);
+    if (now - lastAt < cooldown) return false;
+    memory.update({ lastSafetyMovementChatAt: now, lastSafetyWarningAt: now });
+    say(message, true);
+    return true;
+  }
 
   async function findNearestTree(task = null) {
     throwIfCancelled();
@@ -585,11 +608,19 @@ export function createSurvivalHandlers(ctx) {
   async function fleeDanger(state = perception()) {
     setupMovements();
     const owner = ownerEntity();
-    const nearestHostile = state.raw.hostileMobs?.[0]?.entity;
+    const nearestHostile = state.raw?.hostileMobs?.[0]?.entity;
+    const summary = dangerSummary(state);
+    const ownerName = config.ownerUsername || 'owner';
+    const lowHealthOnly = !summary && Number(state.health ?? bot.health ?? 20) <= Number(config.lowHealthRecoveryThreshold || 8);
 
     if (owner) {
       bot.pathfinder.setGoal(new GoalNear(owner.position.x, owner.position.y, owner.position.z, config.followDistance));
-      say('Danger nearby. Returning to ModVinny.');
+      const reason = summary
+        ? `Danger nearby: ${summary}.`
+        : lowHealthOnly
+          ? `Low health: ${Number(state.health ?? bot.health ?? 20)}/20.`
+          : 'Unsafe conditions nearby.';
+      maybeSaySafetyMovement(`${reason} Returning to ${ownerName}.`);
       return true;
     }
 
@@ -599,7 +630,7 @@ export function createSurvivalHandlers(ctx) {
       const x = bot.entity.position.x + (away.x / len) * 10;
       const z = bot.entity.position.z + (away.z / len) * 10;
       bot.pathfinder.setGoal(new GoalNear(x, bot.entity.position.y, z, 2));
-      say('Danger nearby. Backing up.');
+      maybeSaySafetyMovement(`${summary ? `Danger nearby: ${summary}.` : 'Danger nearby.'} Backing up.`);
       return true;
     }
 
@@ -716,12 +747,86 @@ export function createSurvivalHandlers(ctx) {
     return hunted;
   }
 
-  async function fishForFood() {
-    throwIfCancelled();
-    const fished = await food.fishForFood(bot, { config, shouldStop: isCancelled });
-    if (fished.ok) memory.update({ lastFoodSearchAt: Date.now(), lastFoodStatus: food.foodStatus(bot, config) });
-    say(fished.message, true);
-    return fished;
+  async function fishForFood(options = {}) {
+    if (fishingPromise) {
+      const message = `I am already fishing. Say "${config.botUsername || 'tj'} stop" when you want me to stop.`;
+      say(message, true);
+      return { ok: true, message, evidence: ['fish_attempted_or_reason_reported'], data: { alreadyFishing: true } };
+    }
+
+    let stopFishing = false;
+    const taskId = 'continuous-fishing';
+    const run = async () => {
+      let catches = 0;
+      let consecutiveFailures = 0;
+      const progressEvery = Math.max(1, Number(config.fishingProgressEveryCatches || 5));
+      const maxFailures = Math.max(1, Number(config.fishingMaxConsecutiveFailures || 2));
+      const stopHandler = () => {
+        stopFishing = true;
+        try { bot.deactivateItem?.(); } catch { /* no active cast */ }
+      };
+      cancellation?.registerCancelableTask?.(taskId, stopHandler);
+      memory.update({ fishingActive: true, fishingCatchCount: 0, fishingStartedAt: Date.now() });
+      say(`Fishing until you say "${config.botUsername || 'tj'} stop".`, true);
+      try {
+        while (!stopFishing && !isCancelled()) {
+          const health = Number(bot.health ?? 20);
+          if (health <= Number(config.lowHealthRecoveryThreshold || 8)) {
+            return {
+              ok: catches > 0,
+              message: `Stopped fishing at ${health}/20 health so I can recover.`,
+              evidence: ['fish_attempted_or_reason_reported'],
+              data: { catches, lowHealth: true }
+            };
+          }
+          const fished = await food.fishForFood(bot, {
+            config,
+            shouldStop: () => stopFishing || isCancelled(),
+            returnToOwner: false,
+            timeoutMs: Number(config.fishingCastTimeoutMs || 45000)
+          });
+          if (stopFishing || isCancelled() || /stopped|cancelled/i.test(String(fished.message || ''))) break;
+          if (fished.ok) {
+            catches += 1;
+            consecutiveFailures = 0;
+            memory.update({
+              lastFoodSearchAt: Date.now(),
+              lastFoodStatus: food.foodStatus(bot, config),
+              fishingCatchCount: catches
+            });
+            if (catches % progressEvery === 0) say(`Still fishing: ${catches} catches so far.`, true);
+            continue;
+          }
+          consecutiveFailures += 1;
+          if (consecutiveFailures >= maxFailures) {
+            say(`${fished.message} Fishing stopped after ${catches} catches.`, true);
+            return {
+              ...fished,
+              evidence: ['fish_attempted_or_reason_reported'],
+              data: { ...(fished.data || {}), catches, consecutiveFailures }
+            };
+          }
+          await wait(750);
+        }
+        return {
+          ok: true,
+          message: `Fishing stopped after ${catches} catches.`,
+          evidence: ['fish_attempted_or_reason_reported'],
+          data: { catches, stopped: true }
+        };
+      } finally {
+        cancellation?.unregisterCancelableTask?.(taskId);
+        try { bot.deactivateItem?.(); } catch { /* no active cast */ }
+        memory.update({ fishingActive: false, fishingStoppedAt: Date.now(), fishingCatchCount: catches });
+      }
+    };
+
+    fishingPromise = run();
+    try {
+      return await fishingPromise;
+    } finally {
+      fishingPromise = null;
+    }
   }
 
   async function gatherPlantFood() {
@@ -786,8 +891,86 @@ export function createSurvivalHandlers(ctx) {
     return true;
   }
 
+  async function recoverLowHealth(state = perception()) {
+    const health = Number(state.health ?? bot.health ?? 20);
+    const threshold = Number(config.lowHealthRecoveryThreshold || 8);
+    if (health > threshold) {
+      if (memory.get().lowHealthRecoveryActive) {
+        memory.update({
+          lowHealthRecoveryActive: false,
+          lowHealthSince: 0,
+          lastHealthRecoveryHealth: health,
+          lastHealthRecoveryProgressAt: Date.now()
+        });
+      }
+      return { ok: true, handled: false, message: 'Health is stable.' };
+    }
+
+    const now = Date.now();
+    const mem = memory.get();
+    const previousHealth = Number(mem.lastHealthRecoveryHealth ?? health);
+    const lowHealthSince = Number(mem.lowHealthSince || now);
+    const progressAt = health > previousHealth ? now : Number(mem.lastHealthRecoveryProgressAt || lowHealthSince);
+    memory.update({
+      lowHealthRecoveryActive: true,
+      lowHealthSince,
+      lastHealthRecoveryHealth: health,
+      lastHealthRecoveryProgressAt: progressAt
+    });
+
+    const attemptCooldown = Number(config.healthRecoveryAttemptCooldownMs || 15000);
+    if (now - Number(mem.lastHealthRecoveryAttemptAt || 0) < attemptCooldown) {
+      return { ok: true, handled: true, message: `Recovering at ${health}/20 health.` };
+    }
+    memory.update({ lastHealthRecoveryAttemptAt: now });
+
+    const foodState = food.foodStatus(bot, config);
+    if (foodState.hasFood && foodState.food < 20) {
+      const eaten = await food.eatIfHungry(bot, { config, recovery: true });
+      if (eaten.ok) {
+        memory.update({ lastMealAt: Date.now(), lastHealthRecoveryAction: 'ate food' });
+        return { ok: true, handled: true, message: `${eaten.message} Recovering at ${health}/20 health.`, data: { eaten: true } };
+      }
+    }
+
+    if (foodState.food >= 18) {
+      const stalledFor = now - progressAt;
+      if (stalledFor >= Number(config.healthRecoveryHelpAfterMs || 45000)) {
+        const helpCooldown = Number(config.healthRecoveryHelpCooldownMs || 60000);
+        const lastHelpOrWarningAt = Math.max(Number(mem.lastHealthRecoveryHelpAt || 0), Number(mem.lastLowHealthWarningAt || 0));
+        if (now - lastHelpOrWarningAt >= helpCooldown) {
+          memory.update({ lastHealthRecoveryHelpAt: now });
+          say(`My health is still ${health}/20 even with hunger at ${foodState.food}/20. Please help me get somewhere safe.`, true);
+        }
+      }
+      return { ok: true, handled: true, message: `Waiting safely to regenerate from ${health}/20 health.` };
+    }
+
+    const threatText = dangerSummary(state);
+    if (!threatText) {
+      const gathered = await food.gatherPlantFood(bot, { config, shouldStop: isCancelled });
+      if (gathered.ok) {
+        const eaten = await food.eatIfHungry(bot, { config, recovery: true });
+        memory.update({ lastHealthRecoveryAction: eaten.ok ? 'gathered and ate food' : 'gathered food' });
+        return { ok: true, handled: true, message: eaten.ok ? `${gathered.message} ${eaten.message}` : gathered.message, data: { gathered: true, eaten: eaten.ok } };
+      }
+    }
+
+    const helpCooldown = Number(config.healthRecoveryHelpCooldownMs || 60000);
+    const lastHelpOrWarningAt = Math.max(Number(mem.lastHealthRecoveryHelpAt || 0), Number(mem.lastLowHealthWarningAt || 0));
+    if (now - lastHelpOrWarningAt >= helpCooldown) {
+      memory.update({ lastHealthRecoveryHelpAt: now, lastHealthRecoveryAction: 'asked owner for help' });
+      const dangerText = threatText ? ` Danger nearby: ${threatText}.` : '';
+      say(`My health is ${health}/20 and hunger is ${foodState.food}/20, but I have no safe food.${dangerText} Please bring food or help clear the area.`, true);
+    }
+    return { ok: false, handled: true, message: `Need help recovering at ${health}/20 health.`, data: { needsHelp: true, threatText } };
+  }
+
   async function surviveTick(state = perception()) {
     if (isCancelled()) return false;
+    if (Number(state.health ?? bot.health ?? 20) <= Number(config.lowHealthRecoveryThreshold || 8)) {
+      await recoverLowHealth(state);
+    }
     await eatIfHungry();
     await handleFoodSurvival(state);
     if (state.dangerFlags.lowHealth || state.dangerFlags.lavaNearby || state.dangerFlags.fireNearby || (!config.allowCombat && state.dangerFlags.hostileNearby)) {
@@ -882,6 +1065,7 @@ export function createSurvivalHandlers(ctx) {
     gatherPlantFood,
     handleFoodSurvival,
     stayNearFriendlyPlayers,
+    recoverLowHealth,
     surviveTick,
     taskStatusText,
     inventoryStatus,

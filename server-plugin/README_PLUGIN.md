@@ -9,7 +9,7 @@ It does not provide teleport, item giving, arbitrary console commands, world edi
 This project expects Java 21 and Gradle:
 
 ```powershell
-cd E:\Games\MCAI\server-plugin
+Set-Location .\server-plugin
 gradle build
 ```
 
@@ -18,7 +18,7 @@ If Java/Gradle are not on PATH, install a JDK 21 toolchain or use an IDE/Gradle 
 ## Install
 
 1. Build the jar.
-2. Copy `build/libs/MCAIBridge-1.0.0-local.jar` to `E:\Games\MCAI\plugins`.
+2. Copy `build/libs/MCAIBridge-0.2.0-public-alpha.jar` to the repository's local `plugins/` directory.
 3. Start the Paper server once so `plugins/MCAIBridge/config.yml` is created.
 4. Change `bridge.token` from the default.
 5. Restart or reload the server.
@@ -41,7 +41,7 @@ POST endpoints require `X-MCAI-Bridge-Token`. Do not expose this bridge publicly
 - `GET /events/recent`
 - `GET /events?since=evt_123`
 - `GET /players`
-- `GET /players/ModVinny`
+- `GET /players/{configured-owner-name}`
 - `GET /regions`
 - `GET /regions/region_id`
 - `GET /regions/near?world=world&x=0&y=64&z=0&radius=32`

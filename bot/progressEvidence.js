@@ -147,6 +147,9 @@ const EVIDENCE_DEFINITIONS = [
   def('food_count_reported', 'food', 'Food count was reported.', 'action_result'),
   def('hunger_status_reported', 'food', 'Hunger status was reported.', 'action_result'),
 
+  def('iron_tool_count_increased_or_missing_reported', 'crafting', 'Iron tool crafting completed or reported missing materials.', 'action_result'),
+  def('smelt_completed_or_reason_reported', 'crafting', 'Smelting completed or reported why it could not proceed.', 'action_result'),
+
   def('armor_status_reported', 'armor', 'Armor status was reported.', 'action_result'),
   def('armor_equipped_reported', 'armor', 'Equipped armor was reported.', 'action_result'),
 

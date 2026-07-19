@@ -80,6 +80,18 @@ export function classifyCoreIntent(text, context = {}) {
   if (/\biron\s+(gear|armor|armour|tools?|sword|pickaxe|axe|shovel|hoe)\b/.test(normalized)) return null;
   if (/\b(plugin|plugins|mineflayer|wrapper|wrappers|pathfinder|collectblock|collect block|tool plugin)\b/.test(normalized)) return null;
 
+  // Resolve specific multi-step/tool requests before the broader "get iron"
+  // and "make tools" patterns below.
+  if (/\b(progress to iron|iron age|get to iron|path to iron|to iron tools|work toward iron)\b/.test(normalized)) {
+    return route('progress_to_iron', 'progress_to_iron', 0.96, 'Matched competent core pattern: progress_to_iron.');
+  }
+  if (/\b(craft|make).{0,16}\bstone tools\b/.test(normalized)) {
+    return route('craft_stone_tools', 'craft_stone_tools', 0.9, 'Matched competent core pattern: craft_stone_tools.');
+  }
+  if (/\b(craft|make).{0,16}\biron tools\b/.test(normalized)) {
+    return route('craft_iron_tools', 'craft_iron_tools', 0.9, 'Matched competent core pattern: craft_iron_tools.');
+  }
+
   if (/\b(make|keep|make us|keep us).{0,12}\b(safe|safer|secure)\b/.test(normalized)) {
     return clarify('make_safe', 'Safety request is broad.', [
       { canonicalCommand: 'tj light home', label: 'light home', reason: 'Add safe lighting if the area is already valid.' },

@@ -4,7 +4,8 @@ param(
   [int]$Port = 25565,
   [string]$PaperVersion = "1.21.11",
   [string]$LevelName = "world-1.21.11",
-  [switch]$InstallJava
+  [switch]$InstallJava,
+  [switch]$AcceptEula
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,11 +35,18 @@ if (-not $Jar) {
   throw "No Paper $PaperVersion jar found in $Root. Run '.\scripts\Install-Paper.ps1 -Version $PaperVersion' first."
 }
 
-Set-Content -LiteralPath (Join-Path $Root "eula.txt") -Value @(
-  "# By changing the setting below to TRUE you are indicating your agreement to the Minecraft EULA."
-  "# https://aka.ms/MinecraftEULA"
-  "eula=true"
-) -Encoding ASCII
+$EulaPath = Join-Path $Root "eula.txt"
+$EulaAccepted = (Test-Path $EulaPath) -and ((Get-Content -LiteralPath $EulaPath -Raw) -match '(?im)^\s*eula\s*=\s*true\s*$')
+if (-not $EulaAccepted) {
+  if (-not $AcceptEula) {
+    throw "Review https://aka.ms/MinecraftEULA, then re-run with -AcceptEula to record explicit acceptance."
+  }
+  Set-Content -LiteralPath $EulaPath -Value @(
+    "# By changing the setting below to TRUE you are indicating your agreement to the Minecraft EULA."
+    "# https://aka.ms/MinecraftEULA"
+    "eula=true"
+  ) -Encoding ASCII
+}
 
 $PropertiesPath = Join-Path $Root "server.properties"
 if (-not (Test-Path $PropertiesPath)) {

@@ -5,6 +5,7 @@ import {
   releaseMove,
   canClaimMove,
   getMoveClaim,
+  gotoNear,
   MOVE_PRIORITY
 } from '../movementController.js';
 import { rankBlocks, expandCluster, RESOURCE_BLOCKS, SIGHT_RADIUS } from '../sight.js';
@@ -48,6 +49,52 @@ test('move claim: same owner can re-claim', () => {
   const memory = memStore();
   assert.equal(claimMove(memory, { owner: 'collect', priority: MOVE_PRIORITY.job }).ok, true);
   assert.equal(claimMove(memory, { owner: 'collect', priority: MOVE_PRIORITY.job }).ok, true);
+});
+
+test('move claim: unrelated equal-priority work cannot overlap', () => {
+  const memory = memStore();
+  assert.equal(claimMove(memory, { owner: 'collect_a', priority: 'job' }).ok, true);
+  assert.equal(canClaimMove(memory, 'job', 'collect_b'), false);
+  const competing = claimMove(memory, { owner: 'collect_b', priority: 'job' });
+  assert.equal(competing.ok, false);
+  assert.equal(getMoveClaim(memory).owner, 'collect_a');
+});
+
+test('move claim: stale completion cannot release a newer claim generation', () => {
+  const memory = memStore();
+  const first = claimMove(memory, { owner: 'water_rescue', priority: 'emergency' });
+  const second = claimMove(memory, { owner: 'water_rescue', priority: 'emergency' });
+  const firstId = first.data.claim.claimId;
+  const secondId = second.data.claim.claimId;
+  assert.notEqual(firstId, secondId);
+  assert.equal(releaseMove(memory, 'water_rescue', { claimId: firstId }).ok, false);
+  assert.equal(getMoveClaim(memory).claimId, secondId);
+  assert.equal(releaseMove(memory, 'water_rescue', { claimId: secondId }).ok, true);
+});
+
+test('goto cleanup does not clear a successor claim path', async () => {
+  const memory = memStore();
+  let rejectGoto;
+  let clearedGoals = 0;
+  const bot = {
+    entity: { position: pos(0, 64, 0) },
+    pathfinder: {
+      goto: () => new Promise((resolve, reject) => { rejectGoto = reject; }),
+      setGoal: (goal) => { if (goal === null) clearedGoals += 1; }
+    }
+  };
+  const pending = gotoNear(bot, pos(8, 64, 8), {
+    memory,
+    owner: 'old_job',
+    priority: 'job',
+    timeoutMs: 5000
+  });
+  const clearsBeforeSuccessor = clearedGoals;
+  assert.equal(claimMove(memory, { owner: 'emergency_successor', priority: 'emergency' }).ok, true);
+  rejectGoto(new Error('old path failed'));
+  await pending;
+  assert.equal(clearedGoals, clearsBeforeSuccessor);
+  assert.equal(getMoveClaim(memory).owner, 'emergency_successor');
 });
 
 test('rankBlocks clusters nearest group first', () => {

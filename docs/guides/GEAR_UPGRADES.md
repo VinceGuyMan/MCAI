@@ -1,13 +1,13 @@
 # Gear Upgrades
 
-Phase 13 adds deterministic gear upgrade awareness for `tj`: gear scoring, enchanting table support, anvil support, potion inventory planning, and honest brewing scaffolding.
+The parked gear domain provides deterministic upgrade awareness: gear scoring, enchanting table support, anvil support, potion inventory planning, and honest brewing scaffolding.
 
 This is owner-approved upgrade support, not autonomous optimization. Ollama may help explain recommendations, but it cannot choose or execute raw gear actions.
 
 ## Architecture
 
 ```text
-ModVinny chat
+configured owner chat
 -> chat.js / commandRegistry.js
 -> gearUpgradeSystem.js / enchanting.js / anvilSystem.js / potionSystem.js / brewing.js
 -> gearSafety.js
@@ -75,13 +75,13 @@ Potion use requires confirmation. Unknown or negative-effect potions are blocked
 
 `bot/brewing.js` is honest status/supply scaffolding for now. Installed Mineflayer exposes enchantment table and anvil helpers, but no reliable high-level brewing stand API was found in this project runtime.
 
-So Phase 13 can:
+The current gear helpers can:
 
 - find brewing stands
 - count brewing ingredients
 - explain missing fire resistance/healing/strength/night vision/slow falling supplies
 
-Phase 13 cannot honestly claim brewed potions unless a future reliable brewing interaction is implemented and verified.
+MCAI cannot honestly claim brewed potions unless a future reliable brewing interaction is implemented and verified.
 
 ## Safety Rules
 
@@ -181,7 +181,7 @@ Dashboard endpoints added if the dashboard is enabled:
 ## Tests
 
 ```powershell
-cd E:\Games\MCAI\bot
+Set-Location .\bot
 npm run gear:audit
 npm run test:gear
 ```
@@ -191,4 +191,4 @@ Known caveats:
 - Enchanting and anvil mutation depend on Mineflayer API behavior on Minecraft 1.21.11.
 - Brewing mutation is not implemented yet.
 - The system recommends upgrades conservatively.
-- No gear upgrade action may spend valuable resources without ModVinny confirmation.
+- No gear upgrade action may spend valuable resources without confirmation from the configured owner.

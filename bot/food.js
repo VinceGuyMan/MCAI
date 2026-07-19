@@ -396,7 +396,7 @@ export function foodStatusText(bot, config = {}) {
 export async function eatIfHungry(bot, options = {}) {
   const config = options.config || options;
   const direct = Boolean(options.direct);
-  const minFood = config.minFoodBeforeEating ?? 18;
+  const minFood = options.recovery ? 20 : (config.minFoodBeforeEating ?? 18);
   const criticalFood = config.criticalFoodLevel ?? 8;
 
   if ((bot.food ?? 20) >= minFood) {
@@ -695,32 +695,76 @@ export async function craftFood(bot, foodName) {
   return result(true, `Crafted ${requested}.`);
 }
 
+export function findNearbyFishingWater(bot, maxDistance = 8) {
+  if (!bot?.entity?.position || typeof bot.findBlocks !== 'function' || typeof bot.blockAt !== 'function') return null;
+  const waterId = bot.registry?.blocksByName?.water?.id;
+  const matching = waterId === undefined ? (block) => block?.name === 'water' : waterId;
+  let positions = [];
+  try {
+    positions = bot.findBlocks({ matching, maxDistance, count: 64 }) || [];
+  } catch {
+    return null;
+  }
+  const passableAbove = new Set(['air', 'cave_air', 'void_air', 'short_grass', 'tall_grass']);
+  return positions
+    .map((position) => bot.blockAt(position))
+    .filter((block) => block?.name === 'water')
+    .filter((block) => {
+      const above = bot.blockAt(block.position.offset(0, 1, 0));
+      return !above || passableAbove.has(above.name);
+    })
+    .sort((a, b) => bot.entity.position.distanceTo(a.position) - bot.entity.position.distanceTo(b.position))[0] || null;
+}
+
 export async function fishForFood(bot, options = {}) {
   const config = options.config || options;
   if (!config.allowFishing) return result(false, 'Fishing is disabled.');
   const rod = findInventoryItem(bot, 'fishing_rod');
   if (!rod) return result(false, 'I need a fishing rod to fish.');
+  if (typeof bot.fish !== 'function') return result(false, 'Fishing is unavailable in this bot runtime.');
+  const water = findNearbyFishingWater(bot, Number(config.fishingWaterSearchRadius || 8));
+  if (!water) return result(false, 'I need to stand beside open water before I can fish safely.');
 
+  let stopPoll = null;
+  let timeout = null;
   try {
     console.log('[food] fishing for food');
     if (options.shouldStop?.()) return result(false, 'Stopped fishing.');
     await bot.equip(rod, 'hand');
+    if (typeof bot.lookAt === 'function') {
+      const aim = water.position.offset(0.5, 1, 0.5);
+      await bot.lookAt(aim, true);
+    }
+    const stopPromise = new Promise((resolve, reject) => {
+      stopPoll = setInterval(() => {
+        if (!options.shouldStop?.()) return;
+        try { bot.deactivateItem?.(); } catch { /* no active cast */ }
+        reject(new Error('Stopped fishing.'));
+      }, 200);
+    });
+    const timeoutPromise = new Promise((resolve, reject) => {
+      timeout = setTimeout(() => {
+        try { bot.deactivateItem?.(); } catch { /* no active cast */ }
+        reject(new Error('fishing timed out'));
+      }, Number(options.timeoutMs || config.fishingCastTimeoutMs || 45000));
+    });
     const races = [
       bot.fish(),
-      wait(options.timeoutMs || 30000).then(() => { throw new Error('fishing timed out'); })
+      timeoutPromise
     ];
-    if (options.shouldStop) {
-      races.push((async () => {
-        while (!options.shouldStop?.()) await wait(250);
-        throw new Error('Stopped fishing.');
-      })());
-    }
+    if (options.shouldStop) races.push(stopPromise);
     await Promise.race(races);
-    if (config.returnToOwnerAfterFoodTask) await returnNearOwner(bot, config);
-    return result(true, 'Caught something while fishing.');
+    const returnToOwner = options.returnToOwner ?? config.returnToOwnerAfterFoodTask;
+    if (returnToOwner) await returnNearOwner(bot, config);
+    return result(true, 'Caught something while fishing.', { waterPosition: point(water.position) });
   } catch (error) {
-    console.warn(`[food] fish failed: ${error.message}`);
+    try { bot.deactivateItem?.(); } catch { /* no active cast */ }
+    const expectedStop = /stopped fishing|fishing cancel(?:l)?ed/i.test(error.message || '');
+    if (!expectedStop) console.warn(`[food] fish failed: ${error.message}`);
     return result(false, `I could not fish: ${error.message}`);
+  } finally {
+    if (stopPoll) clearInterval(stopPoll);
+    if (timeout) clearTimeout(timeout);
   }
 }
 
@@ -750,7 +794,7 @@ export async function findFood(bot, options = {}) {
   }
 
   if (config.allowFishing) {
-    const fished = await fishForFood(bot, { config });
+    const fished = await fishForFood(bot, { config, shouldStop: options.shouldStop });
     if (fished.ok) return fished;
   }
 

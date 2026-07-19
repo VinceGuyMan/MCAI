@@ -42,9 +42,9 @@ export async function startDashboard(context = {}) {
   let listenError = null;
   server.on('error', (error) => {
     listenError = error;
-    // EADDRINUSE is expected when AIO already started a standalone dashboard — not a hard failure.
+    // The launcher normally stops a standalone dashboard before the bot binds.
     if (error?.code === 'EADDRINUSE') {
-      logWith(context.logger, 'info', `[dashboard] port ${host}:${port} already in use — reusing existing dashboard.`);
+      logWith(context.logger, 'warn', `[dashboard] port ${host}:${port} is already in use; live bot telemetry is unavailable until the standalone dashboard is stopped and TJ is restarted.`);
       return;
     }
     logWith(context.logger, 'warn', `[dashboard] startup/runtime failure: ${error.message}`);

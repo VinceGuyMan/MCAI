@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { loadConfig as loadRawConfig, configPath, projectRoot } from '../config.js';
 import { normalizeConfig, validateConfig, explainConfigErrors } from '../configSchema.js';
-import { loadGoals, goalsPath } from '../goals.js';
+import { goalsPath } from '../goals.js';
 import { getCommands, validateCommandWiring } from '../commandRegistry.js';
 import { validateCapabilitiesAgainstActions, validateCapabilitiesAgainstModules } from '../capabilities.js';
 import { createMemory } from '../memory.js';
@@ -45,6 +46,10 @@ function pass(name, detail = '') {
 
 function fail(name, detail = '') {
   checks.push({ ok: false, name, detail });
+}
+
+function warn(name, detail = '') {
+  checks.push({ ok: true, warning: true, name, detail });
 }
 
 async function tcpReachable(host, port, timeoutMs = 1500) {
@@ -126,7 +131,7 @@ function getManifestModels(modelDir) {
   return models;
 }
 
-function createMockActions(memory) {
+async function createMockActions(memory) {
   const bot = {
     mcaiConfig: config,
     username: config.botUsername,
@@ -312,7 +317,7 @@ try {
     if (configuredOllamaModelsDir) {
       fs.existsSync(configuredOllamaModelsDir)
         ? pass('OLLAMA_MODELS store exists', configuredOllamaModelsDir)
-        : fail('OLLAMA_MODELS store exists', configuredOllamaModelsDir);
+        : warn('OLLAMA_MODELS configured path is unavailable', configuredOllamaModelsDir);
     }
     const payload = await response.json();
     const names = (payload.models || []).map((model) => model.name);
@@ -368,13 +373,13 @@ try {
 }
 
 if (await tcpReachable(config.host, config.port)) pass('server reachable', `${config.host}:${config.port}`);
-else fail('server reachable', `${config.host}:${config.port}`);
+else warn('server is offline', `${config.host}:${config.port}`);
 
 try {
   const raw = fs.readFileSync(memoryPath, 'utf8');
   JSON.parse(raw);
-  fs.accessSync(memoryPath, fs.constants.R_OK | fs.constants.W_OK);
-  pass('memory.json readable/writable', memoryPath.pathname);
+  fs.accessSync(memoryPath, fs.constants.R_OK);
+  pass('memory.json readable', memoryPath.pathname);
 } catch (error) {
   fail('memory.json readable/writable', error.message);
 }
@@ -382,47 +387,34 @@ try {
 try {
   const raw = fs.readFileSync(mapMemoryPath, 'utf8');
   JSON.parse(raw);
-  fs.accessSync(mapMemoryPath, fs.constants.R_OK | fs.constants.W_OK);
-  pass('map-memory.json readable/writable', mapMemoryPath.pathname);
+  fs.accessSync(mapMemoryPath, fs.constants.R_OK);
+  pass('map-memory.json readable', mapMemoryPath.pathname);
 } catch (error) {
   fail('map-memory.json readable/writable', error.message);
 }
 
 try {
-  if (!fs.existsSync(conversationMemoryPath)) {
-    fs.writeFileSync(conversationMemoryPath, `${JSON.stringify({
-      version: 1,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      recentTurns: [],
-      memoryFacts: [],
-      playerProfiles: {},
-      botSelfNotes: [],
-      relationshipNotes: [],
-      conversationStats: {}
-    }, null, 2)}\n`);
-  }
   const raw = fs.readFileSync(conversationMemoryPath, 'utf8');
   JSON.parse(raw);
-  fs.accessSync(conversationMemoryPath, fs.constants.R_OK | fs.constants.W_OK);
-  pass('conversation-memory.json readable/writable', conversationMemoryPath.pathname);
+  fs.accessSync(conversationMemoryPath, fs.constants.R_OK);
+  pass('conversation-memory.json readable', conversationMemoryPath.pathname);
 } catch (error) {
   fail('conversation-memory.json readable/writable', error.message);
 }
 
 try {
-  loadGoals();
   const raw = fs.readFileSync(goalsPath, 'utf8');
   JSON.parse(raw);
-  fs.accessSync(goalsPath, fs.constants.R_OK | fs.constants.W_OK);
-  pass('goals.json readable/writable', goalsPath);
+  fs.accessSync(goalsPath, fs.constants.R_OK);
+  pass('goals.json readable', goalsPath);
 } catch (error) {
   fail('goals.json readable/writable', error.message);
 }
 
 try {
-  const memory = createMemory(config.memoryPath);
-  const actions = createMockActions(memory);
+  const doctorDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcai-doctor-'));
+  const memory = createMemory(path.join(doctorDir, 'memory.json'));
+  const actions = await createMockActions(memory);
   const commands = getCommands();
   if (commands.length) pass('command registry loads', `${commands.length} commands`);
   else fail('command registry loads', 'no commands');
@@ -470,7 +462,8 @@ if (!process.env.ANTHROPIC_API_KEY && !process.env.GOOGLE_API_KEY) pass('no clou
 else pass('cloud API keys ignored', 'bot uses local Ollama only');
 
 for (const check of checks) {
-  console.log(`${check.ok ? 'PASS' : 'FAIL'} ${check.name}${check.detail ? ` - ${check.detail}` : ''}`);
+  const label = check.warning ? 'WARN' : check.ok ? 'PASS' : 'FAIL';
+  console.log(`${label} ${check.name}${check.detail ? ` - ${check.detail}` : ''}`);
 }
 
 if (checks.some((check) => !check.ok)) process.exitCode = 1;

@@ -9,13 +9,13 @@
 - [Version](../VERSION.md)
 - [Backlog](../BACKLOG.md)
 
-## Guides
+## Current guides
 
-See `guides/` for feature docs (thin core, dashboard, skills, curriculum, nether-related, etc.).
+See [`guides/`](guides/) for the supported companion core, dashboard, skills, and clearly labeled parked/experimental domains. Curriculum and progression operating systems were removed from the live tree; their old material is kept in the archive for historical reference.
 
 ## History
 
-See `history/` for audits, test plans, release notes, and field reports.
+See [`history/`](history/) for point-in-time audits, test plans, release notes, and field reports. Historical files intentionally preserve the paths, names, commands, and product assumptions used when they were written; do not treat them as current setup instructions.
 
 ## Design
 

@@ -30,6 +30,8 @@ const DEFAULT_TIMEOUT = {
   flee: 20000
 };
 
+let claimSequence = 0;
+
 function now() {
   return Date.now();
 }
@@ -54,6 +56,12 @@ function ok(message, data = {}) {
 
 function fail(reason, data = {}) {
   return { ok: false, reason, message: reason, data };
+}
+
+function ownsMoveGeneration(memory, claimId, options = {}) {
+  if (typeof options.isCurrent === 'function' && options.isCurrent() === false) return false;
+  if (!memory || !claimId) return true;
+  return getMoveClaim(memory)?.claimId === claimId;
 }
 
 /**
@@ -81,7 +89,7 @@ export function canClaimMove(memory, priority, owner = null) {
   if (!current) return true;
   if (owner && current.owner === owner) return true;
   const p = typeof priority === 'number' ? priority : getMovePriority(priority);
-  return p >= Number(current.priority || 0);
+  return p > Number(current.priority || 0);
 }
 
 /**
@@ -96,11 +104,18 @@ export function claimMove(memory, options = {}) {
   const ttlMs = Math.max(5000, Number(options.ttlMs || 180000));
   const current = getMoveClaim(memory);
 
-  if (current && current.owner !== owner && priority < Number(current.priority || 0)) {
-    return fail(`path busy (${current.kind || current.owner}, p=${current.priority})`, { current });
+  // Stale water_rescue claims used to block follow/come forever ("path busy emergency p=90").
+  const force = options.force === true;
+
+  if (current && current.owner !== owner && priority <= Number(current.priority || 0)) {
+    if (!force) {
+      return fail(`path busy (${current.kind || current.owner}, p=${current.priority})`, { current });
+    }
+    // Explicit force is reserved for owner cancellation/emergency handoff.
   }
 
   const claim = {
+    claimId: options.claimId || `${owner}:${now()}:${++claimSequence}`,
     owner,
     priority,
     kind: options.kind || options.priority || 'job',
@@ -121,6 +136,9 @@ export function claimMove(memory, options = {}) {
 export function releaseMove(memory, owner = null, options = {}) {
   const current = getMoveClaim(memory);
   if (!current) return ok('already free');
+  if (options.claimId && current.claimId !== options.claimId) {
+    return fail('claim changed', { current, expectedClaimId: options.claimId });
+  }
   if (!options.force && owner && current.owner !== owner) {
     return fail('not claim owner', { current });
   }
@@ -156,20 +174,35 @@ export function clearGoal(bot) {
   }
 }
 
-function addFluidAvoid(movements, bot) {
+function addLavaFireAvoid(movements, bot) {
   if (!movements?.blocksToAvoid || !bot?.registry?.blocksByName) return;
-  for (const name of ['water', 'lava', 'bubble_column', 'fire', 'soul_fire', 'kelp', 'kelp_plant', 'seagrass', 'tall_seagrass', 'magma_block']) {
+  for (const name of ['lava', 'fire', 'soul_fire', 'magma_block']) {
     const id = bot.registry.blocksByName[name]?.id;
     if (id !== undefined && id !== null) movements.blocksToAvoid.add(id);
   }
   for (const [name, entry] of Object.entries(bot.registry.blocksByName || {})) {
-    if ((/water|lava/.test(name)) && entry?.id !== undefined) movements.blocksToAvoid.add(entry.id);
+    if (/lava|magma/.test(name) && entry?.id !== undefined) movements.blocksToAvoid.add(entry.id);
+  }
+}
+
+function addFluidAvoid(movements, bot) {
+  if (!movements?.blocksToAvoid || !bot?.registry?.blocksByName) return;
+  addLavaFireAvoid(movements, bot);
+  for (const name of ['water', 'bubble_column', 'kelp', 'kelp_plant', 'seagrass', 'tall_seagrass']) {
+    const id = bot.registry.blocksByName[name]?.id;
+    if (id !== undefined && id !== null) movements.blocksToAvoid.add(id);
+  }
+  for (const [name, entry] of Object.entries(bot.registry.blocksByName || {})) {
+    if ((/water/.test(name)) && entry?.id !== undefined) movements.blocksToAvoid.add(entry.id);
   }
 }
 
 /**
  * Build a Movements profile.
- * @param {'default'|'dry'|'dig'|'follow'|'scout'} profile
+ * @param {'default'|'dry'|'dig'|'follow'|'scout'|'swim'} profile
+ *
+ * Important: every non-swim profile marks water as blocksToAvoid so surface jobs
+ * don't swim. Swim profile must NOT avoid water — liquidCost alone is not enough.
  */
 export function buildMovements(bot, profile = 'default', config = {}) {
   if (!bot || !Movements) return null;
@@ -180,7 +213,15 @@ export function buildMovements(bot, profile = 'default', config = {}) {
   if ('dontCreateFlow' in m) m.dontCreateFlow = true;
 
   const baseLiquid = Number(config.defaultLiquidCost || 80);
-  if (profile === 'dry' || profile === 'dig' || profile === 'scout') {
+  if (profile === 'swim') {
+    // Shore rescue / cross-water follow: path THROUGH water, don't bridge around it.
+    m.liquidCost = Math.max(1, Number(config.swimLiquidCost || 1));
+    addLavaFireAvoid(m, bot);
+    // Place only as last-resort footing (pathfinder still can dig/place if needed)
+    if ('scafoldingBlocks' in m || 'scaffoldingBlocks' in m) {
+      // leave defaults
+    }
+  } else if (profile === 'dry' || profile === 'dig' || profile === 'scout') {
     m.liquidCost = 10000;
     addFluidAvoid(m, bot);
   } else if (profile === 'follow') {
@@ -237,6 +278,7 @@ export async function gotoNear(bot, position, options = {}) {
   const profile = options.profile || 'default';
 
   let claimed = false;
+  let claimId = null;
   if (memory) {
     const claim = claimMove(memory, {
       owner,
@@ -244,15 +286,21 @@ export async function gotoNear(bot, position, options = {}) {
       kind: options.kind || 'goto',
       reason: options.reason || 'gotoNear',
       ttlMs: timeoutMs + 10000,
-      movementMode: options.movementMode
+      movementMode: options.movementMode,
+      force: options.force === true
     });
     if (!claim.ok) return claim;
     claimed = true;
+    claimId = claim.data?.claim?.claimId || null;
   }
 
   const prev = applyProfile(bot, profile, options.config || bot.mcaiConfig);
   clearGoal(bot);
+  const cancellation = options.cancellation || bot?.mcaiCancellation || null;
+  let timeoutId = null;
+  let unregisterCancel = () => {};
   try {
+    if (cancellation?.isCancelled?.()) return fail('cancelled', { position });
     const goal = new GoalNear(
       Math.floor(position.x),
       Math.floor(position.y),
@@ -261,21 +309,33 @@ export async function gotoNear(bot, position, options = {}) {
     );
     const gotoPromise = bot.pathfinder.goto(goal);
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(Object.assign(new Error('path timeout'), { timeout: true })), timeoutMs);
+      timeoutId = setTimeout(() => reject(Object.assign(new Error('path timeout'), { timeout: true })), timeoutMs);
     });
-    await Promise.race([gotoPromise, timeoutPromise]);
+    const cancelPromise = new Promise((_, reject) => {
+      if (typeof cancellation?.onCancel !== 'function') return;
+      unregisterCancel = cancellation.onCancel(({ reason } = {}) => {
+        if (ownsMoveGeneration(memory, claimId, options)) clearGoal(bot);
+        reject(Object.assign(new Error(reason || 'cancelled'), { cancelled: true }));
+      });
+    });
+    await Promise.race([gotoPromise, timeoutPromise, cancelPromise]);
     return ok('arrived', { position, range, profile });
   } catch (error) {
-    clearGoal(bot);
+    if (ownsMoveGeneration(memory, claimId, options)) clearGoal(bot);
+    if (error?.cancelled) return fail('cancelled', { position });
     if (error?.timeout) return fail('path timeout', { position });
     if (/goal was changed|PathStopped|cancel/i.test(String(error.message || error))) {
       return fail('goal interrupted', { detail: error.message });
     }
     return fail(error.message || 'path failed', { position });
   } finally {
-    restoreProfile(bot, prev);
-    if (claimed && memory && options.release !== false) {
-      releaseMove(memory, owner);
+    if (timeoutId) clearTimeout(timeoutId);
+    unregisterCancel();
+    if (ownsMoveGeneration(memory, claimId, options)) {
+      restoreProfile(bot, prev);
+      if (claimed && memory && options.release !== false) {
+        releaseMove(memory, owner, { claimId });
+      }
     }
   }
 }
@@ -292,6 +352,7 @@ export async function gotoLookAtBlock(bot, block, options = {}) {
   const timeoutMs = Math.max(3000, Number(options.timeoutMs || 20000));
   const profile = options.profile || 'dig';
   let claimed = false;
+  let claimId = null;
 
   if (memory) {
     const claim = claimMove(memory, {
@@ -304,6 +365,7 @@ export async function gotoLookAtBlock(bot, block, options = {}) {
     });
     if (!claim.ok) return claim;
     claimed = true;
+    claimId = claim.data?.claim?.claimId || null;
   }
 
   const prev = applyProfile(bot, profile, options.config || bot.mcaiConfig);
@@ -321,6 +383,7 @@ export async function gotoLookAtBlock(bot, block, options = {}) {
       const near = await gotoNear(bot, { x: block.position.x, y: py, z: block.position.z }, {
         ...options,
         memory: null, // already claimed
+        isCurrent: () => ownsMoveGeneration(memory, claimId, options),
         range: 2,
         profile,
         release: false
@@ -334,12 +397,14 @@ export async function gotoLookAtBlock(bot, block, options = {}) {
     }
     return ok('looking at block', { name: block.name, position: block.position });
   } catch (error) {
-    clearGoal(bot);
+    if (ownsMoveGeneration(memory, claimId, options)) clearGoal(bot);
     if (error?.timeout) return fail('path timeout');
     return fail(error.message || 'look-at path failed');
   } finally {
-    restoreProfile(bot, prev);
-    if (claimed && memory && options.release !== false) releaseMove(memory, owner);
+    if (ownsMoveGeneration(memory, claimId, options)) {
+      restoreProfile(bot, prev);
+      if (claimed && memory && options.release !== false) releaseMove(memory, owner, { claimId });
+    }
   }
 }
 
@@ -354,6 +419,7 @@ export async function followEntity(bot, entity, options = {}) {
   const owner = options.owner || 'follow';
   const range = Math.max(1, Number(options.range ?? options.distance ?? 3));
   const priority = options.priority || 'follow';
+  let claimId = null;
 
   if (memory) {
     const claim = claimMove(memory, {
@@ -362,16 +428,22 @@ export async function followEntity(bot, entity, options = {}) {
       kind: 'follow',
       reason: options.reason || 'follow entity',
       ttlMs: Number(options.ttlMs || 600000),
-      movementMode: options.movementMode || 'follow_owner'
+      movementMode: options.movementMode || 'follow_owner',
+      force: options.force === true
     });
     if (!claim.ok) return claim;
+    claimId = claim.data?.claim?.claimId || null;
   }
 
-  applyProfile(bot, options.profile || 'follow', options.config || bot.mcaiConfig);
+  const previous = applyProfile(bot, options.profile || 'follow', options.config || bot.mcaiConfig);
   try {
     bot.pathfinder.setGoal(new GoalFollow(entity, range), true);
-    return ok('following', { range });
+    return ok('following', { range, claimId });
   } catch (error) {
+    if (ownsMoveGeneration(memory, claimId, options)) {
+      restoreProfile(bot, previous);
+      if (memory && claimId) releaseMove(memory, owner, { claimId, clearMode: true });
+    }
     return fail(error.message || 'follow failed');
   }
 }
@@ -418,7 +490,9 @@ export async function withMoveClaim(memory, options, fn) {
   try {
     return await fn(claim.claim || claim.data?.claim);
   } finally {
-    if (options.keepClaim !== true) releaseMove(memory, owner);
+    if (options.keepClaim !== true) {
+      releaseMove(memory, owner, { claimId: claim.data?.claim?.claimId || null });
+    }
   }
 }
 

@@ -96,7 +96,7 @@ The action records:
 These systems are not deleted, but should not run from normal command routing while thin core is enabled:
 
 - broad planner execution in `brain.applyPlan`
-- curriculum/progression execution
+- retired curriculum/progression compatibility surfaces
 - villager automation
 - blueprint/build automation
 - Nether automation
@@ -106,7 +106,7 @@ These systems are not deleted, but should not run from normal command routing wh
 
 ## Field Test Commands
 
-Run these in Minecraft as `ModVinny`:
+Run these in Minecraft from the account configured as `ownerUsername`:
 
 ```text
 tj plugin status

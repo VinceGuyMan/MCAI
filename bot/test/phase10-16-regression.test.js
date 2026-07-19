@@ -35,25 +35,19 @@ const phaseModules = {
   'skillRunner.js': ['runSkill', 'cancelActiveSkill', 'isSkillRunning'],
   'skillMemory.js': ['ensureSkillMemoryShape', 'getRecentSkillRuns'],
   'progressEvidence.js': ['listEvidenceDefinitions', 'verifySkillEvidence'],
-  'curriculumEngine.js': ['suggestNextSkills', 'suggestCurriculumTrack'],
-  'curriculumTemplates.js': ['getCurriculumTemplates', 'buildTrackSuggestion'],
-  'curriculumScoring.js': ['scoreSkillCandidate', 'rankByScore'],
-  'curriculumMemory.js': ['ensureCurriculumMemoryShape', 'getActiveCurriculum'],
-  'curriculumExecutor.js': ['approveCurriculumSuggestion', 'executeNextCurriculumStep'],
-  'curriculumGuard.js': ['canCurriculumExecuteSkill', 'explainCurriculumExecutionBlockers'],
+  'curriculumTemplates.js': ['getCurriculumTemplate', 'listCurriculumTemplates'],
+  'curriculumMemory.js': ['ensureCurriculumMemoryShape', 'loadCurriculumMemory'],
+  'curriculumExecutor.js': ['getActiveCurriculum', 'cancelCurriculum'],
   '../dashboard/server.js': ['startDashboard'],
   '../dashboard/dashboardState.js': ['buildDashboardState'],
   '../dashboard/dashboardRoutes.js': ['createDashboardRequestHandler'],
   '../dashboard/dashboardControl.js': ['dashboardStopAll', 'dashboardRunSkill'],
   '../dashboard/dashboardSecurity.js': ['validateDashboardConfig', 'redactSecrets'],
   'progressionRegistry.js': ['getProgressionMilestones', 'validateMilestoneDefinitions'],
-  'progressionEvidence.js': ['verifyMilestoneEvidence', 'collectProgressionSnapshot'],
+  'progressionEvidence.js': ['getProgressionEvidenceDefinition', 'validateProgressionEvidenceNames'],
   'progressionState.js': ['ensureProgressionStateShape', 'loadProgressionState'],
-  'progressionTracker.js': ['checkProgression', 'getProgressionSummary'],
-  'progressionAdvisor.js': ['suggestNextMilestones', 'buildProgressionPlan'],
-  'progressionPlanner.js': ['createPlanForMilestone', 'validateProgressionPlan'],
-  'vanillaAdvancementBridge.js': ['vanillaAdvancementTrackingAvailable', 'explainVanillaTrackingLimits'],
-  'progressionPaths.js': ['getProgressionPaths', 'getNextMilestoneInPath'],
+  'progressionTracker.js': ['checkMilestone', 'getProgressionSummary'],
+  'progressionPaths.js': ['listProgressionPaths', 'getNextMilestoneInPath'],
   'gearScore.js': ['scoreGearItem', 'getGearSummary'],
   'enchanting.js': ['enchantingStatus', 'enchantItem'],
   'anvilSystem.js': ['anvilStatus', 'applyBookToItem'],
@@ -143,7 +137,7 @@ function mockCancellation() {
   };
 }
 
-test('all Phase 10-16 modules import and expose expected functions', async () => {
+test('active Phase 10-16 modules and retired compatibility shims expose expected functions', async () => {
   for (const [file, expectedExports] of Object.entries(phaseModules)) {
     const mod = await import(moduleUrl(file));
     for (const name of expectedExports) {
@@ -180,8 +174,6 @@ test('commands wire to action handlers and representative Phase 10-16 commands e
   for (const alias of [
     'tj evidence status',
     'tj suggest next skill',
-    'tj curriculum status',
-    'tj progression status',
     'tj gear status',
     'tj villager status',
     'tj blueprints',
@@ -265,21 +257,22 @@ test('bridge validates malformed events and does not expose cheat endpoints', as
   assert.equal(/\/control\/command|\/teleport|\/give|worldedit/i.test(bridgeSource), false);
 });
 
-test('execution boundaries keep autonomy and raw actions out of orchestration layers', async () => {
+test('execution boundaries keep autonomy and raw actions out of active and retired orchestration layers', async () => {
   const skillRunnerSource = source('skillRunner.js');
   assert.equal(/from ['"]mineflayer|bot\.dig\s*\(|bot\.placeBlock\s*\(|bot\.attack\s*\(/.test(skillRunnerSource), false);
 
   const curriculumExecutorSource = source('curriculumExecutor.js');
-  assert.match(curriculumExecutorSource, /skillRunner\.js|from '\.\/skillRunner\.js'/);
+  assert.match(curriculumExecutorSource, /retired/i);
   assert.equal(/from ['"]\.\/actions\.js|ollama|openai|mineflayer|bot\.dig\s*\(|bot\.placeBlock\s*\(|bot\.attack\s*\(/i.test(curriculumExecutorSource), false);
 
   const progressionSource = [
     'progressionRegistry.js',
     'progressionTracker.js',
-    'progressionAdvisor.js',
-    'progressionPlanner.js',
-    'progressionSystem.js'
+    'progressionEvidence.js',
+    'progressionPaths.js',
+    'progressionState.js'
   ].map(source).join('\n');
+  assert.match(progressionSource, /retired/i);
   assert.equal(/executeAction|runSkill|createActions|ollama|openai/i.test(progressionSource), false);
 
   const dashboardControlSource = source('../dashboard/dashboardControl.js');
@@ -294,7 +287,7 @@ test('stop and cancellation hooks exist for Phase 10-16 surfaces', async () => {
     perception: () => ({}),
     cancellation: mockCancellation()
   });
-  for (const actionName of ['stop', 'cancel_curriculum', 'blueprint_cancel_build', 'bridge_emergency_stop']) {
+  for (const actionName of ['stop', 'blueprint_cancel_build', 'bridge_emergency_stop']) {
     assert.equal(typeof actions[actionName], 'function', `${actionName} should be callable`);
   }
   assert.match(source('blueprintBuilder.js'), /isCancelled|cancel/i);

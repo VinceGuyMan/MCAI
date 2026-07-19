@@ -408,7 +408,8 @@ export const NATURAL_COMMAND_PATTERNS = [
       /\b(starter\s+)?kit\b/,
       /\brestock\b/,
       /\bgear me up\b/,
-      /\b(give|get).{0,12}\b(iron\s+)?(kit|gear|tools|outfit)\b/
+      /\bgive(?:\s+(?:me|us))?.{0,12}\b(iron\s+)?(kit|gear|tools|outfit)\b/,
+      /\bget(?:\s+(?:me|us))?.{0,12}\b(kit|outfit)\b/
     ]
   },
   {
@@ -671,7 +672,7 @@ export const NATURAL_COMMAND_PATTERNS = [
     confidence: 0.88,
     riskLevel: 'low',
     reason: 'Owner asked about danger.',
-    naturalExamples: ['danger nearby', 'are we safe', 'scan threats'],
+    naturalExamples: ['danger nearby', 'what danger is nearby', 'what danger is there', 'are we safe', 'scan threats'],
     patterns: [/\b(danger|threat|mobs).*(nearby|around|scan)?\b/, /\bare we safe\b/, /\bscan threats?\b/]
   },
   {

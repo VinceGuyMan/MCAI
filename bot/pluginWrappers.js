@@ -197,8 +197,10 @@ async function emergencySurface(bot, options = {}) {
     await waterRescue.rescueFromWater(bot, {
       memory: options.memory || bot.mcaiMemory || null,
       ownerUsername: options.ownerUsername || bot.mcaiConfig?.ownerUsername,
-      timeoutMs: options.timeoutMs || 22000,
-      radius: options.radius || 40
+      timeoutMs: options.timeoutMs || 28000,
+      radius: options.radius || 36,
+      cancellation: cancellationFrom(bot, options),
+      force: options.force === true
     });
   } catch {
     // best effort
@@ -708,33 +710,75 @@ export async function pathToOwnerSafely(bot, options = {}) {
     if (!owner) return fail('Owner is not visible.');
     if (!bot?.pathfinder?.goto) return fail(pluginMissingReason('mineflayer-pathfinder'), { usedPlugin: false });
     const distance = options.distance || bot?.mcaiConfig?.followDistance || 3;
-    if (botIsInFluid(bot)) {
-      await emergencySurface(bot, {
-        memory: options.memory || bot.mcaiMemory,
-        ownerUsername: ownerName
-      });
+    const mem = options.memory || bot.mcaiMemory || null;
+
+    // Owner explicit come may cancel water rescue, but must not steal an unrelated job.
+    if (mem) {
+      const current = movement.getMoveClaim(mem);
+      if (current?.owner === 'water_rescue') waterRescue.abortWaterRescue(mem);
     }
 
-    // If owner is across water, allow a swim profile; otherwise prefer dry land.
     let ownerInWater = false;
     try {
       const of = bot.blockAt(owner.position);
-      ownerInWater = Boolean(of && isFluidName(of.name));
+      const of2 = bot.blockAt(owner.position.offset(0, -0.2, 0));
+      ownerInWater = Boolean(
+        (of && isFluidName(of.name)) || (of2 && isFluidName(of2.name))
+      );
     } catch {
       // ignore
     }
-    const profile = ownerInWater || botIsInFluid(bot) ? 'default' : 'follow';
-    if (ownerInWater || botIsInFluid(bot)) {
-      // Cheap liquids so we actually swim instead of bridge-only thrash
+    const botWet = botIsInFluid(bot) || waterRescue.botNeedsWaterRescue?.(bot);
+    const needSwim = ownerInWater || botWet;
+    let swimAttempt = null;
+
+    // In water: manual swim first (pathfinder hop-stuck was the regression)
+    if (needSwim) {
       try {
-        if (bot.pathfinder?.movements) bot.pathfinder.movements.liquidCost = 2;
-      } catch {
-        // ignore
+        swimAttempt = await waterRescue.swimToTarget(bot, owner.position, {
+          memory: mem,
+          timeoutMs: Number(options.timeoutMs || 28000),
+          range: distance + 1,
+          moveOwner: options.moveOwner || 'come_to_owner',
+          priority: 'come',
+          cancellation: cancellationFrom(bot, options)
+        });
+        const distNow = bot.entity.position.distanceTo(owner.position);
+        if (distNow <= distance + 2) {
+          return ok('Swam to owner.', {
+            owner: ownerName,
+            usedPlugin: 'waterRescue.swim',
+            distance: distNow,
+            waterRescue: swimAttempt.data || null
+          }, ['returned_safely']);
+        }
+        // If swim got us closer on dry shore near owner, OK-ish
+        if (swimAttempt.ok && waterRescue.botIsSafelyDry?.(bot) && distNow <= distance + 4) {
+          return ok('Swam near owner on shore.', {
+            owner: ownerName,
+            usedPlugin: 'waterRescue.swim',
+            distance: distNow,
+            waterRescue: swimAttempt.data || null
+          }, ['returned_safely']);
+        }
+      } catch (error) {
+        swimAttempt = fail(error.message || String(error));
+        // fall through to pathfinder
+      }
+      // After swim attempt still wet → shore rescue once
+      if (waterRescue.botNeedsWaterRescue?.(bot)) {
+        await emergencySurface(bot, { memory: mem, ownerUsername: ownerName, timeoutMs: 22000 });
       }
     }
 
+    const profile = needSwim ? 'swim' : 'follow';
+    const moveConfig = {
+      ...(options.config || bot.mcaiConfig || {}),
+      ...(needSwim ? { swimLiquidCost: 1, defaultLiquidCost: 1 } : {})
+    };
+
     const result = await movement.gotoNear(bot, owner.position, {
-      memory: options.memory || bot.mcaiMemory || null,
+      memory: mem,
       owner: options.moveOwner || 'come_to_owner',
       priority: 'come',
       kind: 'come',
@@ -742,17 +786,44 @@ export async function pathToOwnerSafely(bot, options = {}) {
       profile,
       timeoutMs: Number(options.timeoutMs || bot?.mcaiConfig?.ownerPathTimeoutMs || 45000),
       release: true,
-      config: options.config || bot.mcaiConfig,
+      config: moveConfig,
+      cancellation: cancellationFrom(bot, options),
       movementMode: 'thin_come_to_owner'
     });
-    if (botIsInFluid(bot)) {
-      await emergencySurface(bot, {
-        memory: options.memory || bot.mcaiMemory,
-        ownerUsername: ownerName
+
+    if (waterRescue.botNeedsWaterRescue?.(bot)) {
+      await emergencySurface(bot, { memory: mem, ownerUsername: ownerName, timeoutMs: 20000 });
+    }
+    if (!result.ok) {
+      // Final manual swim burst toward owner
+      if (needSwim) {
+        try {
+          await waterRescue.manualSwimToward(bot, owner.position, {
+            maxMs: 6000,
+            memory: mem,
+            cancellation: cancellationFrom(bot, options)
+          });
+          const d = bot.entity.position.distanceTo(owner.position);
+          if (d <= distance + 2.5) {
+            return ok('Swam to owner (manual).', { owner: ownerName, usedPlugin: 'waterRescue.manual', distance: d }, ['returned_safely']);
+          }
+        } catch { /* ignore */ }
+      }
+      return fail(result.reason || result.message || 'path to owner failed', {
+        owner: ownerName,
+        usedPlugin: 'movementController',
+        waterRescue: swimAttempt
+          ? { ok: swimAttempt.ok, reason: swimAttempt.reason || null, ...(swimAttempt.data || {}) }
+          : null
       });
     }
-    if (!result.ok) return fail(result.reason || result.message || 'path to owner failed', { owner: ownerName, usedPlugin: 'movementController' });
-    return ok('Reached owner using mineflayer-pathfinder.', { owner: ownerName, usedPlugin: 'movementController' }, ['returned_safely']);
+    return ok('Reached owner using mineflayer-pathfinder.', {
+      owner: ownerName,
+      usedPlugin: 'movementController',
+      waterRescue: swimAttempt
+        ? { ok: swimAttempt.ok, reason: swimAttempt.reason || null, ...(swimAttempt.data || {}) }
+        : null
+    }, ['returned_safely']);
   });
 }
 
@@ -763,21 +834,58 @@ export async function followOwnerSafely(bot, options = {}) {
     if (!owner) return fail('Owner is not visible.');
     if (!bot?.pathfinder?.setGoal) return fail(pluginMissingReason('mineflayer-pathfinder'), { usedPlugin: false });
     const distance = options.distance || bot?.mcaiConfig?.followDistance || 3;
+    let ownerInWater = false;
+    try {
+      const of = bot.blockAt(owner.position);
+      ownerInWater = Boolean(of && isFluidName(of.name));
+    } catch {
+      // ignore
+    }
+    const needSwim = ownerInWater || botIsInFluid(bot) || waterRescue.botNeedsWaterRescue?.(bot);
+    // Owner follow may cancel water rescue, but must not steal an unrelated job.
+    const mem = options.memory || bot.mcaiMemory || null;
+    if (mem) {
+      const current = movement.getMoveClaim(mem);
+      if (current?.owner === 'water_rescue') waterRescue.abortWaterRescue(mem);
+    }
+    if (needSwim && waterRescue.botNeedsWaterRescue?.(bot)) {
+      // Get out / toward owner once before GoalFollow thrash
+      try {
+        await waterRescue.swimToTarget(bot, owner.position, {
+          memory: mem,
+          timeoutMs: 12000,
+          range: distance + 1,
+          moveOwner: options.moveOwner || 'follow_owner',
+          priority: 'follow',
+          cancellation: cancellationFrom(bot, options)
+        });
+      } catch { /* ignore */ }
+    }
     const result = await movement.followEntity(bot, owner, {
-      memory: options.memory || bot.mcaiMemory || null,
+      memory: mem,
       owner: options.moveOwner || 'follow_owner',
       priority: 'follow',
       range: distance,
-      profile: 'follow',
-      config: options.config || bot.mcaiConfig,
+      profile: needSwim ? 'swim' : 'follow',
+      config: {
+        ...(options.config || bot.mcaiConfig || {}),
+        ...(needSwim ? { swimLiquidCost: 1 } : {})
+      },
       movementMode: 'follow_owner',
       reason: 'follow owner'
     });
     if (!result.ok) return fail(result.reason || result.message || 'follow failed', { owner: ownerName });
+    const followClaimId = result.data?.claimId || null;
     registerCancelableTask(bot, options, 'pluginWrappers:followOwner', () => {
-      clearPathfinderGoal(bot);
-      if (options.memory || bot.mcaiMemory) {
-        movement.releaseMove(options.memory || bot.mcaiMemory, options.moveOwner || 'follow_owner', { clearMode: true });
+      const followMemory = options.memory || bot.mcaiMemory || null;
+      if (!followMemory || !followClaimId || movement.getMoveClaim(followMemory)?.claimId === followClaimId) {
+        clearPathfinderGoal(bot);
+      }
+      if (followMemory) {
+        movement.releaseMove(followMemory, options.moveOwner || 'follow_owner', {
+          claimId: followClaimId,
+          clearMode: true
+        });
       }
     });
     return ok('Following owner using mineflayer-pathfinder.', { owner: ownerName, distance, usedPlugin: 'movementController' }, ['follow_goal_set']);
@@ -800,7 +908,8 @@ export async function pathToPositionSafely(bot, position, options = {}) {
       profile: preferDry ? 'dry' : 'default',
       timeoutMs: Number(options.timeoutMs || 30000),
       release: true,
-      config: options.config || bot.mcaiConfig
+      config: options.config || bot.mcaiConfig,
+      cancellation: cancellationFrom(bot, options)
     });
     if (!result.ok) return fail(result.reason || result.message || 'path failed', { position });
     return ok('Reached position using mineflayer-pathfinder.', { position, usedPlugin: 'movementController' }, ['returned_safely']);

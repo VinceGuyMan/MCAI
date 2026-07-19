@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeThinResource, normalizeThinFoodRequest, routeThinCoreIntent, thinCoreStatus } from '../thinCore.js';
+import { Vec3 } from 'vec3';
+import { come_to_owner, normalizeThinResource, normalizeThinFoodRequest, routeThinCoreIntent, thinCoreStatus } from '../thinCore.js';
 import { normalizeFoodName, listKnownFoodItems } from '../food.js';
 import { routeNaturalCommand } from '../naturalCommandRouter.js';
 
@@ -172,4 +173,52 @@ test('thin status uses the exact thin result shape', () => {
   assert.equal(typeof result.message, 'string');
   assert.equal(typeof result.evidence, 'object');
   assert.equal(typeof result.data, 'object');
+});
+
+test('come_to_owner keeps a successful swim arrival beside the owner', async () => {
+  let state = { moveClaim: null, waterRescueAbort: false };
+  const memory = {
+    get: () => state,
+    update: (patch) => { state = { ...state, ...patch }; }
+  };
+  const ownerPosition = new Vec3(2.5, 64, 0.5);
+  const bot = {
+    mcaiConfig: {
+      ownerUsername: 'ModVinny',
+      followDistance: 3,
+      thinCoreMoveTimeoutMs: 5000,
+      waterSurfaceOxygenThreshold: 14,
+      waterOwnerHoldMs: 12000,
+      sessionRecorderEnabled: false
+    },
+    entity: { position: new Vec3(0.5, 64, 0.5), isInWater: true, isInLava: false },
+    players: { ModVinny: { entity: { position: ownerPosition } } },
+    oxygenLevel: 20,
+    health: 20,
+    food: 20,
+    pathfinder: {
+      goto: async () => true,
+      setGoal: () => {},
+      stop: () => {},
+      setMovements: () => {}
+    },
+    clearControlStates: () => {},
+    blockAt(position) {
+      if (position.y < 63.8) return { name: 'stone', boundingBox: 'block', position };
+      if (position.y < 64.8) return { name: 'water', boundingBox: 'empty', position };
+      return { name: 'air', boundingBox: 'empty', position };
+    }
+  };
+
+  const started = Date.now();
+  const result = await come_to_owner(bot, memory, {}, {
+    bot,
+    config: bot.mcaiConfig,
+    rawText: 'tj come here'
+  });
+
+  assert.equal(result.ok, true);
+  assert.ok(result.evidence.ownerDistance <= 3);
+  assert.ok(state.waterOwnerHoldUntil > Date.now());
+  assert.ok(Date.now() - started < 1000, 'arrival should not launch a distant shore rescue');
 });

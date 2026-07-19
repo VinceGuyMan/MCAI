@@ -14,6 +14,8 @@ const defaults = {
   port: 25565,
   minecraftVersion: '1.21.11',
   auth: 'offline',
+  // Supported public profile is local-only. LAN binding requires an explicit expert override.
+  allowLanServerBinding: false,
   llmProvider: 'ollama',
   ollamaUrl: 'http://127.0.0.1:11434',
   // LLM: code-first companion. 'dialogue' = chat flavor only; 'off' = no Ollama; 'full' = fuzzy commands too.
@@ -43,11 +45,8 @@ const defaults = {
   // Surface digs: never swim for sand/clay/gravel/dirt unless you set allowUnderwaterDigging true.
   allowUnderwaterDigging: false,
   minOxygenToDig: 12,
-  // Base pathfinder cost for water/lava (higher = avoid more). Surface digs use ~10000 temporarily.
-  defaultLiquidCost: 80,
   // Surface coal / early mining: allow without a full torch stack (charcoal path first).
   allowMiningWithoutTorches: false,
-  minTorchCountForMining: 4,
   // Keep logs/planks for crafting when smelting (fuel prefers coal/charcoal first).
   smeltReserveLogs: 4,
   smeltReservePlanks: 4,
@@ -89,8 +88,14 @@ const defaults = {
   sightDigRadius: 40,
   sightOreRadius: 96,
   sightScanRadius: 40,
-  waterRescueCooldownMs: 8000,
-  waterRescueTimeoutMs: 22000,
+  // Shore rescue: short cooldown so "float then idle" does not last until drown.
+  waterRescueCooldownMs: 3000,
+  waterRescueTimeoutMs: 35000,
+  // Start surfacing with a healthy air reserve; only abandon the owner when critical.
+  waterSurfaceOxygenThreshold: 14,
+  waterCriticalOxygenThreshold: 8,
+  waterOwnerHoldMs: 12000,
+  swimLiquidCost: 1,
   lastIncompleteCollectMaxAgeMs: 1200000,
   // Companion play mode (living Player 2 defaults). Still keeps Tier-2 parked.
   playMode: 'companion',
@@ -106,7 +111,15 @@ const defaults = {
   companionAmbientCooldownMs: 150000,
   companionHungerCommentCooldownMs: 90000,
   fleeCooldownMs: 12000,
-  fleeChatCooldownMs: 15000,
+  fleeChatCooldownMs: 60000,
+  dangerWarningCooldownMs: 60000,
+  changedDangerWarningMinDelayMs: 15000,
+  lowHealthWarningCooldownMs: 60000,
+  safetyMovementChatCooldownMs: 60000,
+  lowHealthRecoveryThreshold: 8,
+  healthRecoveryAttemptCooldownMs: 15000,
+  healthRecoveryHelpAfterMs: 45000,
+  healthRecoveryHelpCooldownMs: 60000,
   ambientAfterOwnerActivityCooldownMs: 45000,
   allowPlannerIdleDecisions: false,
   advancedAutonomyEnabled: false,
@@ -160,6 +173,10 @@ const defaults = {
   cookFoodEnabled: true,
   allowPassiveHunting: true,
   allowFishing: true,
+  fishingWaterSearchRadius: 8,
+  fishingCastTimeoutMs: 45000,
+  fishingProgressEveryCatches: 5,
+  fishingMaxConsecutiveFailures: 2,
   allowCropHarvesting: false,
   allowFarmReplanting: true,
   maxPassiveHuntSwings: 24,
@@ -292,7 +309,6 @@ const defaults = {
   requireConfirmationForCaveExploration: true,
   requireConfirmationForLeavingHomeRadius: true,
   combatEnabled: true,
-  allowCombat: true,
   allowDefensiveCombat: true,
   allowAutonomousCombat: false,
   allowBaseDefense: true,
@@ -657,6 +673,10 @@ export function loadConfig() {
   config.configPath = configPath;
   config.memoryPath = path.join(projectRoot, 'memory.json');
   return config;
+}
+
+export function createDefaultConfig() {
+  return JSON.parse(JSON.stringify(defaults));
 }
 
 export { configPath, projectRoot };

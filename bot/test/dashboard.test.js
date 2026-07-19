@@ -173,6 +173,13 @@ test('dashboard control does not call actions.executeAction directly', () => {
   assert.equal(source.includes('executeAction('), false);
 });
 
+test('dashboard polling waits for the current refresh before scheduling another', () => {
+  const source = fs.readFileSync(new URL('../../dashboard/public/app.js', import.meta.url), 'utf8');
+  assert.match(source, /if \(refreshInFlight\) return refreshInFlight;/);
+  assert.match(source, /await refresh\(\);[\s\S]*window\.setTimeout\(pollDashboard, state\.intervalMs\);/);
+  assert.equal(/setInterval\s*\(\s*refresh/.test(source), false);
+});
+
 test('dashboard output does not include dashboard token', async () => {
   const state = await buildDashboardState(mockBot(), mockMemory(), { config });
   assert.equal(JSON.stringify(state).includes('test-token'), false);

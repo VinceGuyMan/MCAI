@@ -11,9 +11,28 @@ import {
   maybeCompanionAmbient
 } from './companionMode.js';
 
+export function summarizeNearbyDanger(state = {}) {
+  const groups = new Map();
+  for (const threat of Array.isArray(state.nearbyHostiles) ? state.nearbyHostiles : []) {
+    const name = String(threat?.name || 'hostile').replace(/_/g, ' ');
+    const current = groups.get(name) || { count: 0, distance: Infinity };
+    current.count += 1;
+    current.distance = Math.min(current.distance, Number(threat?.distance ?? Infinity));
+    groups.set(name, current);
+  }
+  const parts = [...groups.entries()].slice(0, 4).map(([name, info]) => {
+    const count = info.count > 1 ? `${info.count} ${name}s` : name;
+    return Number.isFinite(info.distance) ? `${count} about ${Math.round(info.distance)} blocks away` : count;
+  });
+  if (state.dangerFlags?.lavaNearby) parts.push('lava within 8 blocks');
+  if (state.dangerFlags?.fireNearby) parts.push('fire within 8 blocks');
+  return parts.join(', ');
+}
+
 export function createBrain(config, deps) {
   const { bot, perception, safety, actions, taskQueue, planner, memory, cancellation } = deps;
   let timer = null;
+  let tickPromise = null;
   let lastTaskPosition = null;
   initializeIdleAutonomy(bot, memory, config);
   const ownerOnlyActions = new Set([
@@ -278,32 +297,61 @@ export function createBrain(config, deps) {
     return true;
   }
 
-  async function tick() {
+  async function runTick() {
     if (cancellation?.isCancelled?.()) return;
     const state = perception();
     updateStuckCounter(state);
 
-    // Water / drown rescue — emergency path before other brain work.
+    // Water / drown rescue — skip if owner just stopped or a come/follow claim is active.
     if (bot) {
       try {
         const water = await import('./waterRescue.js');
-        const inWater = water.botIsInFluid(bot) || water.botHeadInFluid(bot);
-        const o2 = Number(bot.oxygenLevel ?? 20);
         const memW = memory.get();
-        const lastRescue = Number(memW.lastWaterRescueAt || 0);
-        const cooldown = Number(config.waterRescueCooldownMs || 8000);
-        if (inWater && (o2 < 14 || Date.now() - lastRescue > cooldown * 2)) {
+        const o2 = Number(bot.oxygenLevel ?? 20);
+        const surfaceThreshold = Number(config.waterSurfaceOxygenThreshold || 14);
+        const criticalThreshold = Number(config.waterCriticalOxygenThreshold || 8);
+        const criticalOxygen = o2 <= criticalThreshold;
+        const ownerBusy = memW.thinCoreTaskActive || memW.followOwnerActive
+          || (memW.moveClaim && memW.moveClaim.owner && memW.moveClaim.owner !== 'water_rescue'
+            && Number(memW.moveClaim.priority || 0) >= 50
+            && memW.moveClaim.expiresAt > Date.now());
+        const justStopped = memW.lastManualStopAt && Date.now() - memW.lastManualStopAt < 4000;
+        const needs = typeof water.botNeedsWaterRescue === 'function'
+          ? water.botNeedsWaterRescue(bot)
+          : (water.botIsInFluid(bot) || water.botHeadInFluid(bot));
+        const owner = bot.players?.[config.ownerUsername]?.entity;
+        const ownerDistance = owner?.position && bot.entity?.position
+          ? bot.entity.position.distanceTo(owner.position)
+          : Number.POSITIVE_INFINITY;
+        const holdNearOwner = Number(memW.waterOwnerHoldUntil || 0) > Date.now()
+          && ownerDistance <= 8;
+        if (needs && !justStopped && holdNearOwner && !criticalOxygen) {
+          if (o2 <= surfaceThreshold || water.botHeadInFluid?.(bot)) {
+            await water.surfaceForAir?.(bot, {
+              memory,
+              toward: owner?.position || null,
+              maxMs: 2600,
+              cancellation
+            });
+          }
+          memory.update({ lastWaterRescueAt: Date.now() });
+          return;
+        }
+        if (needs && !justStopped && (!ownerBusy || criticalOxygen)) {
+          const lastRescue = Number(memW.lastWaterRescueAt || 0);
+          const cooldown = criticalOxygen
+            ? 1500
+            : Number(config.waterRescueCooldownMs || 3500);
           if (Date.now() - lastRescue >= cooldown) {
             memory.update({ lastWaterRescueAt: Date.now() });
             const rescue = await water.rescueFromWater(bot, {
               memory,
               ownerUsername: config.ownerUsername,
-              timeoutMs: Number(config.waterRescueTimeoutMs || 20000)
+              timeoutMs: Number(config.waterRescueTimeoutMs || 30000),
+              cancellation,
+              force: criticalOxygen
             });
-            if (rescue?.ok && !rescue.data?.skipped) {
-              // Let pathfinder settle one tick
-              return;
-            }
+            if (rescue && !rescue.data?.skipped) return;
           }
         }
       } catch (error) {
@@ -312,21 +360,54 @@ export function createBrain(config, deps) {
     }
 
     if (bot && config.lifelikeDialogueEnabled && config.allowTaskCommentary) {
-      if (state.health <= 6) eventDialogue.maybeSayEventComment(bot, memory, eventDialogue.onLowHealth({}));
+      const dangerSummary = summarizeNearbyDanger(state);
+      if (state.health <= Number(config.lowHealthRecoveryThreshold || 8)) {
+        eventDialogue.maybeSayEventComment(bot, memory, eventDialogue.onLowHealth({
+          health: state.health,
+          food: state.food,
+          hasFood: state.hasFood,
+          dangerSummary
+        }));
+      }
       else if (state.food <= 6) eventDialogue.maybeSayEventComment(bot, memory, eventDialogue.onLowFood({ type: 'low_food' }));
       else if (state.primaryThreatDistance !== null && state.primaryThreatDistance <= 8 && state.threatCount > 0) {
-        eventDialogue.maybeSayEventComment(bot, memory, eventDialogue.onDangerDetected({}));
+        eventDialogue.maybeSayEventComment(bot, memory, eventDialogue.onDangerDetected({
+          summary: dangerSummary,
+          signature: (state.nearbyHostiles || []).map((threat) => threat.name).sort().join(',')
+        }));
       }
     }
 
-    const runtimeState = memory.get();
-    if (
+    let runtimeState = memory.get();
+    const activeSurvivalInterruptibleTask = Boolean(
       runtimeState.thinCoreTaskActive ||
       runtimeState.activeThinCoreAction ||
       runtimeState.foodTaskActive ||
       runtimeState.farmTaskActive ||
-      runtimeState.animalTaskActive
-    ) return;
+      runtimeState.animalTaskActive ||
+      runtimeState.fishingActive
+    );
+    const criticalLowHealth = Number(state.health ?? 20) <= Number(config.lowHealthRecoveryThreshold || 8);
+    if (activeSurvivalInterruptibleTask && criticalLowHealth) {
+      cancellation?.cancelAll?.('critical low health recovery');
+      try { bot.deactivateItem?.(); } catch { /* no active item */ }
+      try { bot.pathfinder?.setGoal?.(null); } catch { /* no active path */ }
+      memory.update({
+        thinCoreTaskActive: false,
+        activeThinCoreAction: null,
+        foodTaskActive: false,
+        farmTaskActive: false,
+        animalTaskActive: false,
+        fishingActive: false,
+        activeResourceRun: null,
+        movementMode: null
+      });
+      cancellation?.resetCancellation?.();
+      runtimeState = memory.get();
+      await actions.surviveTick(state);
+      return;
+    }
+    if (activeSurvivalInterruptibleTask) return;
 
     if (state.isInNether) {
       if (state.shouldReturnFromNether || state.netherDangerNearby || state.health < (config.minimumHealthForNether || 18) || state.food < (config.minimumFoodForNether || 16)) {
@@ -350,8 +431,12 @@ export function createBrain(config, deps) {
 
     if (config.combatEnabled && config.allowDefensiveCombat) {
       const memCombat = memory.get();
-      const lastFleeChatAt = Number(memCombat.lastFleeChatAt || 0);
-      const fleeChatCooldown = Number(config.fleeChatCooldownMs || 15000);
+      const lastFleeChatAt = Math.max(
+        Number(memCombat.lastFleeChatAt || 0),
+        Number(memCombat.lastSafetyWarningAt || 0),
+        Number(memCombat.lastSafetyMovementChatAt || 0)
+      );
+      const fleeChatCooldown = Number(config.fleeChatCooldownMs || 60000);
       // Movement mutex: jobs / move claims own pathfinder — only flee if critically hurt.
       let jobHoldsMovement = Boolean(
         memCombat.thinCoreTaskActive
@@ -535,6 +620,14 @@ export function createBrain(config, deps) {
         await applyPlan(plan);
       }
     }
+  }
+
+  function tick() {
+    if (tickPromise) return tickPromise;
+    tickPromise = runTick().finally(() => {
+      tickPromise = null;
+    });
+    return tickPromise;
   }
 
   function start() {

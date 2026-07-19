@@ -1,4 +1,4 @@
-# Phase 18.6: Essential Core Hardening
+# Essential core hardening
 
 This pass makes tj harder to break without adding new autonomy or new gameplay systems.
 
@@ -11,12 +11,12 @@ This pass makes tj harder to break without adding new autonomy or new gameplay s
 5. Run exact and fuzzy command matches.
 6. Handle pending confirmations and clarifications.
 7. Route natural speech only to existing registered commands.
-8. Execute actions through the action gate, skill runner, goals, or curriculum systems.
+8. Execute actions through the action gate, skill runner, or goals system.
 9. Use dialogue only as a non-executing fallback.
 
 ## Owner Gate
 
-Only `ModVinny` may trigger actions. Non-owner messages can receive harmless chat only when configured, but they cannot teach natural mappings, confirm risky work, or run actions.
+Only the account configured as `ownerUsername` may trigger actions. Non-owner messages can receive harmless chat only when configured, but they cannot teach natural mappings, confirm risky work, or run actions.
 
 ## Emergency Stop
 
@@ -71,7 +71,7 @@ The server plugin bridge is optional. It may report events, regions, and emergen
 
 ## Test Commands
 
-Run these from `E:\Games\MCAI\bot`:
+Run these from `bot/` in the repository:
 
 ```powershell
 npm run audit:core-hardening

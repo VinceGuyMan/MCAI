@@ -11,7 +11,15 @@ import {
 import { runCoreMacro } from '../competentCore.js';
 
 function position(x = 0, y = 64, z = 0) {
-  return { x, y, z };
+  return {
+    x, y, z,
+    distanceTo(other) {
+      return Math.hypot(other.x - x, other.y - y, other.z - z);
+    },
+    offset(dx, dy, dz) {
+      return position(x + dx, y + dy, z + dz);
+    }
+  };
 }
 
 test('wrapper status reports missing critical runtime plugins', () => {
@@ -20,25 +28,31 @@ test('wrapper status reports missing critical runtime plugins', () => {
   assert.match(result.message, /missing critical/i);
 });
 
-test('collectBlockSafely returns ok:false when collectblock is missing', async () => {
-  const result = await collectBlockSafely({ findBlocks: () => [] }, 'oak_log');
+test('collectBlockSafely reports no target when direct-dig fallback has nothing to collect', async () => {
+  const result = await collectBlockSafely({
+    pathfinder: { goto: async () => true },
+    inventory: { emptySlotCount: () => 36, items: () => [] },
+    findBlocks: () => []
+  }, 'oak_log');
   assert.equal(result.ok, false);
-  assert.match(result.reason, /mineflayer-collectblock is not loaded/);
+  assert.match(result.reason, /No nearby oak_log block found/);
 });
 
 test('collectBlockSafely uses bot.collectBlock when available', async () => {
   const collected = [];
   const bot = {
-    collectBlock: { collect: async (blocks) => collected.push(...blocks) },
+    entity: { position: position() },
+    collectBlock: { collect: async (block) => collected.push(block) },
     tool: { equipForBlock: async () => true },
     pathfinder: { goto: async () => true },
+    inventory: { emptySlotCount: () => 36, items: () => [] },
     findBlocks: () => [position(1, 64, 1)],
     blockAt: () => ({ name: 'oak_log', position: position(1, 64, 1) })
   };
   const result = await collectBlockSafely(bot, 'wood', { count: 1, requireToolPlugin: true });
   assert.equal(result.ok, true);
   assert.equal(collected.length, 1);
-  assert.equal(result.data.usedPlugin, 'mineflayer-collectblock');
+  assert.equal(result.data.usedPlugin, 'direct-dig+vein');
 });
 
 test('collectBlockSafely requires pathfinder runtime before collecting', async () => {
@@ -131,6 +145,7 @@ test('collectBlockSafely cancels active collection and pathfinder goal', async (
   let cancelledCollection = false;
   let clearedGoal = false;
   const pending = collectBlockSafely({
+    entity: { position: position() },
     collectBlock: {
       collect: async () => new Promise((resolve, reject) => { rejectCollect = reject; }),
       cancelTask: () => {
@@ -143,6 +158,7 @@ test('collectBlockSafely cancels active collection and pathfinder goal', async (
       goto: async () => true,
       setGoal: (goal) => { if (goal === null) clearedGoal = true; }
     },
+    inventory: { emptySlotCount: () => 36, items: () => [] },
     findBlocks: () => [position(1, 64, 1)],
     blockAt: () => ({ name: 'stone', position: position(1, 64, 1) })
   }, 'stone', { cancellation, requireToolPlugin: true });
@@ -155,7 +171,7 @@ test('collectBlockSafely cancels active collection and pathfinder goal', async (
   assert.equal(clearedGoal, true);
 });
 
-test('competent core gather_wood rejects honestly when collectblock is missing', async () => {
+test('competent core gather_wood rejects honestly when pathfinder is missing', async () => {
   const actions = {
     executeAction: async (name, args, context) => {
       if (name === 'plugin_collect_blocks') return collectBlockSafely(context.bot, args.resourceName, args);
@@ -175,7 +191,7 @@ test('competent core gather_wood rejects honestly when collectblock is missing',
   const memory = { get: () => ({}), update: () => ({}) };
   const result = await runCoreMacro(bot, memory, 'gather_wood', {}, { sender: 'ModVinny', isOwner: true, actions, bot });
   assert.equal(result.ok, false);
-  assert.match(result.reason, /mineflayer-collectblock is not loaded/);
+  assert.match(result.reason, /mineflayer-pathfinder is not loaded/);
 });
 
 test('wrappers check cancellation before using plugins', async () => {

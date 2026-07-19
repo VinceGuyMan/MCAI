@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 import { getCommands } from '../commandRegistry.js';
 import { getSkill } from '../skillRegistry.js';
 import { getEvidenceDefinition } from '../progressEvidence.js';
-import { getProgressionEvidenceDefinition } from '../progressionEvidence.js';
 import * as villagerMemory from '../villagerMemory.js';
 import * as villagerScanner from '../villagerScanner.js';
 import * as villagerTrading from '../villagerTrading.js';
@@ -95,7 +94,6 @@ if (executeTradeSkill && (!executeTradeSkill.requiresConfirmation || executeTrad
 
 for (const name of evidenceNames) {
   if (!getEvidenceDefinition(name)) errors.push(`missing progress evidence ${name}`);
-  if (!getProgressionEvidenceDefinition(name)) errors.push(`missing progression evidence ${name}`);
 }
 
 const packageText = fs.readFileSync(path.join(root, 'package.json'), 'utf8');

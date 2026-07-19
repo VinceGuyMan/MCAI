@@ -24,8 +24,15 @@ export function createCombatHandlers(ctx) {
 
   async function threatScanAction() {
     const threats = threatAssessment.scanThreats(bot, memory, config.hostileDetectionRadius || 24);
+    const world = perception();
+    const details = [threatAssessment.summarizeThreats(threats)];
+    if (world?.dangerFlags?.lavaNearby) details.push('lava is nearby');
+    if (world?.dangerFlags?.fireNearby) details.push('fire is nearby');
+    if (Number(world?.health) <= Number(config.lowHealthRecoveryThreshold || 8)) {
+      details.push(`my health is ${world.health}/20`);
+    }
     memory.update({ lastThreatScanAt: Date.now() });
-    say(`Threat scan: ${threatAssessment.summarizeThreats(threats)}.`, true);
+    say(`Threat scan: ${details.join('; ')}.`, true);
     return threats;
   }
 

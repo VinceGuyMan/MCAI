@@ -3,6 +3,7 @@
  */
 import * as skillRunner from '../../skillRunner.js';
 import * as pluginWrappers from '../../pluginWrappers.js';
+import * as waterSurvival from '../../waterRescue.js';
 import * as goalsStore from '../../goals.js';
 import { wait } from '../shared.js';
 
@@ -16,6 +17,7 @@ export function createMovementHandlers(ctx) {
     memory,
     taskQueue,
     perception,
+    safety,
     cancellation,
     state,
     setupMovements,
@@ -58,6 +60,7 @@ export function createMovementHandlers(ctx) {
       lastManualStopAt: Date.now(),
       ...clearPendingOwnerDecisions('owner stop'),
       foodTaskActive: false,
+      fishingActive: false,
       activeResourceRun: null,
       farmTaskActive: false,
       animalTaskActive: false,
@@ -77,6 +80,16 @@ export function createMovementHandlers(ctx) {
       netherScoutActive: false
     });
     stopMotion();
+    // Free emergency/water_rescue path claim so come/follow work after stop
+    try {
+      memory.update({
+        moveClaim: null,
+        waterRescueAbort: true,
+        lastManualStopAt: Date.now()
+      });
+    } catch {
+      // ignore
+    }
     say('Stopped.', true);
     return { ok: true, message: 'Stopped.', evidence: ['stop_requested'], data: {} };
   }
@@ -177,6 +190,19 @@ export function createMovementHandlers(ctx) {
     return { ok: true, message: 'Staying here.', evidence: ['path_goal_cleared'], data: {} };
   }
 
+  async function waterRescue() {
+    const result = await waterSurvival.rescueFromWater(bot, {
+      memory,
+      safety,
+      ownerUsername: config.ownerUsername,
+      timeoutMs: Number(config.waterRescueTimeoutMs || 35000),
+      cancellation,
+      force: true
+    });
+    say(result.message || (result.ok ? 'On shore.' : 'Still struggling in the water.'), true);
+    return result;
+  }
+
   async function lookAtOwner() {
     const owner = ownerEntity();
     if (!owner) return false;
@@ -190,6 +216,7 @@ export function createMovementHandlers(ctx) {
     comeToOwner,
     followOwner,
     stay,
+    waterRescue,
     lookAtOwner
   };
 }

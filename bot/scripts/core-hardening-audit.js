@@ -51,7 +51,7 @@ for (const name of ['executeGatedAction', 'validateActionRequest', 'normalizeAct
 
 check(fs.existsSync(path.join(botDir, 'memorySafeWrite.js')), 'memorySafeWrite.js is missing.');
 check(fs.existsSync(path.join(botDir, 'test', 'core-hardening.test.js')), 'core-hardening test is missing.');
-check(fs.existsSync(path.join(rootDir, 'CORE_HARDENING.md')), 'CORE_HARDENING.md is missing.');
+check(fs.existsSync(path.join(rootDir, 'docs', 'guides', 'CORE_HARDENING.md')), 'docs/guides/CORE_HARDENING.md is missing.');
 
 const dashboardRoutes = read('dashboard/dashboardRoutes.js');
 check(!/actions\?\.(blueprint|bridge)[A-Z]\w+\s*\(/.test(dashboardRoutes), 'dashboardRoutes.js still calls blueprint/bridge action methods directly.');

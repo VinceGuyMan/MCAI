@@ -1,10 +1,10 @@
-# Phase 14: Villager Trading And Economy
+# Villager trading and economy
 
-Phase 14 adds villager scanning, village memory, trade inspection, trade scoring, emerald budgeting, and confirmed trade execution.
+The parked villager domain contains scanning, village memory, trade inspection, trade scoring, emerald budgeting, and confirmation-gated trade execution.
 
 ## Safety Model
 
-- Only `ModVinny` can request villager actions.
+- Only the configured owner can request villager actions.
 - Trade execution requires confirmation.
 - tj does not attack villagers, baby villagers, named villagers, or iron golems.
 - tj does not loot villages by default.
@@ -18,7 +18,7 @@ Phase 14 adds villager scanning, village memory, trade inspection, trade scoring
 - Inspect trades through Mineflayer `openVillager`/`trade` APIs when a villager is nearby.
 - Score trades for useful books, gear, food, emerald earning, and risky costs.
 - Track emerald reserve and trade history in `villager-memory.json`.
-- Connect villager evidence to skills, progression, curriculum, and dashboard summaries.
+- Connect villager evidence to skills and dashboard summaries.
 
 ## Known Caveats
 
@@ -70,7 +70,7 @@ Trade completion needs deterministic action results and economy/history records.
 ## Validation
 
 ```powershell
-cd E:\Games\MCAI\bot
+Set-Location .\bot
 npm run villager:audit
 npm run test:villagers
 ```

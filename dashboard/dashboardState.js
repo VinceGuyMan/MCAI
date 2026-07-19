@@ -109,16 +109,17 @@ function hostileEntities(bot, radius = 32) {
     .slice(0, 50);
 }
 
-export function getBotStatus(bot, memory) {
-  const config = bot?.mcaiConfig || memory?.get?.()?.config || {};
+export function getBotStatus(bot, memory, explicitConfig = {}) {
+  const config = bot?.mcaiConfig || memory?.get?.()?.config || explicitConfig || {};
+  const botName = bot?.username || config.botUsername || 'tj';
   const live = Boolean(bot && (bot.entity || bot._client?.state === 'play'));
   return {
-    username: bot?.username || config.botUsername || 'tj',
+    username: botName,
     online: live,
     connected: live,
     offline: !live,
     status: live ? 'online' : 'offline',
-    message: live ? 'Bot is connected.' : 'Bot is offline (server/dashboard only). Start All to put tj in-game.',
+    message: live ? 'Bot is connected.' : `Bot is offline (server/dashboard only). Start All to put ${botName} in-game.`,
     health: live ? round(bot?.health ?? null) : null,
     food: live ? round(bot?.food ?? null) : null,
     position: live ? point(bot?.entity?.position) : null,
@@ -132,7 +133,7 @@ export function getOwnerStatus(bot, memory) {
   const botPosition = bot?.entity?.position;
   const ownerDistance = distance(botPosition, owner?.position);
   return {
-    username: config.ownerUsername || 'ModVinny',
+    username: config.ownerUsername || 'Player',
     nearby: ownerDistance !== null && ownerDistance <= 96,
     visible: Boolean(owner),
     distance: ownerDistance
@@ -475,10 +476,17 @@ export function getGearDashboardStatus(bot, memory = null) {
 }
 
 export function getGearUpgradeDashboardStatus(bot) {
-  return {
-    needs: getGearUpgradeNeeds(bot),
-    summary: getGearSummary(bot)
-  };
+  if (!bot?.inventory) {
+    return { offline: true, needs: [], summary: null, message: 'Bot offline — gear unavailable.' };
+  }
+  try {
+    return {
+      needs: getGearUpgradeNeeds(bot),
+      summary: getGearSummary(bot)
+    };
+  } catch (error) {
+    return { offline: true, needs: [], summary: null, message: error.message };
+  }
 }
 
 export function getEnchantingDashboardStatus(bot, memory = null) {
@@ -584,7 +592,7 @@ export async function getServerBridgeDashboardHealth(config = {}) {
 
 export async function buildDashboardState(bot, memory, context = {}) {
   const config = context.config || bot?.mcaiConfig || {};
-  const botStatus = getBotStatus(bot, memory);
+  const botStatus = getBotStatus(bot, memory, config);
   const systems = {
     ollamaReachable: null,
     serverReachable: null,
@@ -605,7 +613,7 @@ export async function buildDashboardState(bot, memory, context = {}) {
     return sanitizeDashboardOutput({
       timestamp: now(),
       bot: botStatus,
-      owner: { username: config.ownerUsername || 'ModVinny', nearby: false, visible: false, distance: null },
+      owner: { username: config.ownerUsername || 'Player', nearby: false, visible: false, distance: null },
       task: getTaskStatus(memory),
       skill: getSkillStatus(memory),
       naturalRouting: getNaturalRoutingDashboardStatus(memory),
@@ -621,7 +629,7 @@ export async function buildDashboardState(bot, memory, context = {}) {
       safety: { ok: true, message: 'Bot offline — no live safety state' },
       inventory: { itemCount: 0, freeSlots: null, topItems: [], offline: true },
       systems,
-      notice: 'Bot is offline. Paper/dashboard can still run. Use AIO Start All for tj in-game.'
+      notice: `Bot is offline. Paper/dashboard can still run. Use AIO Start All for ${config.botUsername || 'tj'} in-game.`
     });
   }
 

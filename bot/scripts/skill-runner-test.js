@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
 import { createCancellation } from '../cancellation.js';
 import { createActions } from '../actions.js';
 import { getSkill } from '../skillRegistry.js';
@@ -8,6 +10,8 @@ import {
   listRunnableSkills,
   runSkill
 } from '../skillRunner.js';
+
+process.env.MCAI_SKILL_MEMORY = path.join(os.tmpdir(), `mcai-skill-runner-${process.pid}-${Date.now()}.json`);
 
 function makeMemory(initial = {}) {
   let state = { ...initial };

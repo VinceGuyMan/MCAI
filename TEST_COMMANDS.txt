@@ -135,6 +135,22 @@ Knowledge / dialogue (optional LLM):
 [ ] tj careful mode
 [ ] tj helper mode
 
+--- Water swim / shore rescue (2026-07-17, reworked) ---
+Expect:
+  - SWIM (forward+jump), not hop-in-place, not long bridges
+  - Find land within ~36 blocks (dry or shallow)
+  - Dig kelp/seagrass/soft block if stuck
+  - Surface when O2 low; never false "Already on dry land"
+  - stop frees emergency claim; follow must not say "path busy (emergency)"
+  - Drowned-safe: keep moving toward shore, don't thrash
+
+[ ] Owner in water → tj come here          — swim to you
+[ ] Owner on far shore → tj come here      — swim across
+[ ] Push tj into deep water → wait         — auto shore rescue
+[ ] tj get to shore / water rescue
+[ ] Mid-stuck: tj stop then tj come here   — claim free, moves again
+[ ] After free: tj follow me across pond   — swim profile
+
 Thin-core variants:
 [ ] tj thin come
 [ ] tj thin follow

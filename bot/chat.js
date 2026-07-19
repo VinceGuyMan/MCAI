@@ -28,6 +28,12 @@ function stripAddress(message) {
   return text.trim();
 }
 
+export function isGlobalStopText(command) {
+  const normalized = String(command || '').trim().toLowerCase();
+  return ['stop', 'cancel', 'halt', 'freeze'].includes(normalized)
+    || /^(stop|cancel|halt|freeze)\s+(everything|all|now|current task|current job|task|job|fishing|hunting)$/.test(normalized);
+}
+
 export function setupChat(bot, config, deps) {
   const { actions, planner, perception, memory } = deps;
 
@@ -393,7 +399,7 @@ export function setupChat(bot, config, deps) {
     let command = lower.replace(/\barmour\b/g, 'armor');
     command = normalizePlanningCommand(command);
     memory.update({ lastCommand: { username, message, at: Date.now() } });
-    const isGlobalStopCommand = ['stop', 'cancel', 'halt', 'freeze'].includes(command) || command.includes(' stop');
+    const isGlobalStopCommand = isGlobalStopText(command);
     if (!isGlobalStopCommand) actions.resetCancellation();
 
     const pendingScavenge = await handlePendingCraftScavenge(command, username);
@@ -447,7 +453,7 @@ export function setupChat(bot, config, deps) {
     if (command === 'evidence audit') return actions.evidenceAudit();
     if (command.startsWith('verify skill ')) return actions.verifySkill(parseRunSkillName(command.replace(/^verify skill\s+/, 'run skill ')));
     // Friendly redirects for retired curriculum/progression phrases
-    if (/\b(curriculum|milestone|progression status|next milestone|what should we unlock|what are we missing|what have we accomplished)\b/.test(command)
+    if (/\b(curriculum|milestone|progression status|next milestone|what should we unlock|what have we accomplished)\b/.test(command)
       || command === 'progress' || command === 'achievements' || command === 'suggest next skill' || command === 'suggest skills' || command === 'what needs work' || command === 'what can you practice' || command === 'what should you practice') {
       return actions.answerChat('Curriculum and milestones were removed. Try: come here, get wood/coal/iron, make camp, companion mode, or help.');
     }
@@ -781,7 +787,13 @@ export function setupChat(bot, config, deps) {
     }
     if (command === 'combat status' || command === 'defense status') return actions.combatStatus();
     if (command === 'combat gear' || command === 'weapon status') return actions.combatEquipmentStatus();
-    if (command === 'threat scan' || command === 'scan threats' || command === 'what mobs are nearby?' || command === 'are we safe?') return actions.threatScan();
+    if (
+      command === 'threat scan'
+      || command === 'scan threats'
+      || /^(what|which|any|is there|are there|tell me).{0,20}\b(danger|threats?|hostiles?|mobs?)\b/.test(command)
+      || /\b(danger|threats?|hostiles?|mobs?).{0,20}\b(nearby|around|there|close|by us|by me)\b/.test(command)
+      || /^(are we safe|is it safe|what is attacking you|what hurt you)$/.test(command)
+    ) return actions.threatScan();
     if (command === 'defend yourself' || command === 'self defense on') return actions.startSelfDefense(true);
     if (command === 'self defense off') return actions.startSelfDefense(false);
     if (command === 'protect me' || command === 'defend me' || command === 'watch my back') return actions.defendOwner(true);
@@ -827,13 +839,7 @@ export function setupChat(bot, config, deps) {
     if (command === 'where am i?') return actions.whereOwner();
     if (command === 'who is nearby?') return actions.whoNearby();
     if (command === 'get to shore' || command === 'swim to shore' || command === 'get out of water' || command === 'water rescue') {
-      try {
-        const water = await import('./waterRescue.js');
-        const result = await water.rescueFromWater(bot, { memory, ownerUsername: config.ownerUsername, timeoutMs: 25000 });
-        return actions.answerChat(result.message || (result.ok ? 'On shore.' : 'Still struggling in the water.'));
-      } catch (error) {
-        return actions.answerChat(`Water rescue failed: ${error.message}`);
-      }
+      return actions.waterRescue();
     }
     if ((command === 'come here' || command === 'come' || command.includes('come to me')) && config.thinCoreEnabled) return actions.executeAction('thin_come_to_owner', {}, { sender: username, rawText: message, source: 'chat_command' });
     if (command === 'come here' || command === 'come' || command.includes('come to me')) return actions.comeToOwner();
@@ -1113,7 +1119,7 @@ export function setupChat(bot, config, deps) {
     if (command === 'cook food' || command === 'cook meat') return actions.cookFood();
     if (command === 'craft bread') return actions.craftFood('bread');
     if (command === 'hunt food') return actions.huntPassiveFood();
-    if (command === 'fish') return actions.fishForFood();
+    if (command === 'fish' || command === 'keep fishing' || command === 'start fishing' || command === 'fish until i say stop') return actions.fishForFood({ continuous: true });
     if (command === 'stop hunting') return actions.stop();
     if (command === 'armor' || command === 'armor status') return actions.armorStatus();
     if (command === 'equip armor') return actions.equipBestArmor();
@@ -1301,6 +1307,13 @@ export function setupChat(bot, config, deps) {
           const possibleCommand = stripAddress(message).toLowerCase();
           // Goal/work status must not fall into LLM chat.
           if (/^(what'?s?|what is)\s+(your\s+)?(current\s+)?goal|what are you (doing|working on)|current goal|goal status|^goals?$/.test(possibleCommand)) {
+            return handleCommand(username, `${config.botUsername || 'tj'} ${possibleCommand}`);
+          }
+          if (
+            /^(what|which|any|is there|are there|tell me).{0,20}\b(danger|threats?|hostiles?|mobs?)\b/.test(possibleCommand)
+            || /\b(danger|threats?|hostiles?|mobs?).{0,20}\b(nearby|around|there|close|by us|by me)\b/.test(possibleCommand)
+            || /^(are we safe|is it safe|what is attacking you|what hurt you)$/.test(possibleCommand)
+          ) {
             return handleCommand(username, `${config.botUsername || 'tj'} ${possibleCommand}`);
           }
           if (findCommandAlias(`${config.botUsername || 'tj'} ${possibleCommand}`)) {

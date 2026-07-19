@@ -1,18 +1,18 @@
 # Feature guides
 
-| Doc | Topic |
-|-----|--------|
-| [THIN_CORE.md](THIN_CORE.md) | Minimal reliable action API |
-| [DASHBOARD.md](DASHBOARD.md) | Local telemetry UI |
-| [SKILLS.md](SKILLS.md) | Skill registry |
-| [CURRICULUM.md](CURRICULUM.md) | Curriculum system (parked by default) |
-| [PROGRESSION.md](PROGRESSION.md) | Progression (parked) |
-| [BLUEPRINTS.md](BLUEPRINTS.md) | Blueprints (parked) |
-| [GEAR_UPGRADES.md](GEAR_UPGRADES.md) | Gear / enchant / brew |
-| [VILLAGER_ECONOMY.md](VILLAGER_ECONOMY.md) | Villagers (parked) |
-| [SERVER_PLUGIN_BRIDGE.md](SERVER_PLUGIN_BRIDGE.md) | Paper bridge |
-| [EVIDENCE.md](EVIDENCE.md) | Evidence / verification |
-| [CORE_HARDENING.md](CORE_HARDENING.md) | Core reliability notes |
-| [MCAI_MANUAL.txt](MCAI_MANUAL.txt) | Longer manual text |
+Start with the guides that describe the supported companion experience. Advanced-domain guides document parked or experimental code and are not promises that those systems are enabled by default.
 
-Structure and tiers: see [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md).
+| Guide | Scope |
+|---|---|
+| [THIN_CORE.md](THIN_CORE.md) | Reliable movement, collection, and survival action layer |
+| [CORE_HARDENING.md](CORE_HARDENING.md) | Owner control, cancellation, and recovery rules |
+| [DASHBOARD.md](DASHBOARD.md) | Local telemetry, setup, and safe controls |
+| [SKILLS.md](SKILLS.md) | Skill registry, evidence, and execution boundaries |
+| [GEAR_UPGRADES.md](GEAR_UPGRADES.md) | Parked/experimental gear helpers |
+| [VILLAGER_ECONOMY.md](VILLAGER_ECONOMY.md) | Parked villager helpers |
+| [BLUEPRINTS.md](BLUEPRINTS.md) | Parked deterministic blueprint helpers |
+| [SERVER_PLUGIN_BRIDGE.md](SERVER_PLUGIN_BRIDGE.md) | Optional local Paper bridge |
+
+Curriculum and progression operating systems were removed from the live companion tree. Their former documentation is retained under [`../../archive/removed-for-player2/docs/`](../../archive/removed-for-player2/docs/) for historical reference only.
+
+For structure and feature gates, see [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md). Historical audits and test reports are under [`../history/`](../history/).

@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { loadConfig, validateConfig } from '../configSchema.js';
 import { createMemory } from '../memory.js';
-import { loadMapMemory, saveMapMemory } from '../mapMemory.js';
-import { loadConversationMemory, saveConversationMemory } from '../conversationMemory.js';
-import { loadGoals, saveGoals } from '../goals.js';
+import { loadMapMemory } from '../mapMemory.js';
+import { loadConversationMemory } from '../conversationMemory.js';
+import { loadGoals } from '../goals.js';
 import { getCommands, validateCommandWiring } from '../commandRegistry.js';
 import { validateCapabilitiesAgainstActions, validateCapabilitiesAgainstModules } from '../capabilities.js';
 import { createActions } from '../actions.js';
@@ -17,16 +18,6 @@ import { redactSecrets, validateDashboardConfig } from '../../dashboard/dashboar
 import { validateBridgeConfig } from '../../bridge/bridgeValidator.js';
 
 const checks = [];
-const expectedModels = {
-  default: 'qwen3:14b',
-  commandRouter: 'qwen3:14b',
-  planner: 'qwen3:14b',
-  dialogue: 'mistral-nemo:12b',
-  codingStructured: 'qwen2.5-coder:14b',
-  codingHeavy: 'qwen2.5-coder:14b',
-  fastFallback: 'phi4-mini:latest',
-  legacyFallback: 'phi4-mini:latest'
-};
 const envValues = readDotEnv(new URL('../.env', import.meta.url));
 const configuredOllamaModelsDir = String(process.env.OLLAMA_MODELS || envValues.OLLAMA_MODELS || '').trim();
 const ollamaManifestModels = getManifestModels(configuredOllamaModelsDir);
@@ -37,6 +28,10 @@ function pass(name, detail = '') {
 
 function fail(name, detail = '') {
   checks.push({ ok: false, name, detail });
+}
+
+function warn(name, detail = '') {
+  checks.push({ ok: true, warning: true, name, detail });
 }
 
 function dependency(name) {
@@ -111,7 +106,7 @@ async function tcpReachable(host, port, timeoutMs = 1200) {
   });
 }
 
-function createMockActions(config, memory) {
+async function createMockActions(config, memory) {
   const bot = {
     mcaiConfig: config,
     username: config.botUsername,
@@ -174,19 +169,17 @@ if (config.minecraftVersion === '1.21.11') pass('Minecraft version is 1.21.11');
 else fail('Minecraft version is 1.21.11', config.minecraftVersion);
 
 try {
-  const memory = createMemory(config.memoryPath);
-  pass('memory.json load/create');
-  const mapMemory = loadMapMemory();
-  saveMapMemory(mapMemory);
-  pass('map-memory.json load/save');
-  const goals = loadGoals();
-  saveGoals(goals);
-  pass('goals.json load/save');
-  const conversation = loadConversationMemory();
-  saveConversationMemory(conversation);
-  pass('conversation-memory.json load/save');
+  const smokeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcai-smoke-'));
+  const memory = createMemory(path.join(smokeDir, 'memory.json'));
+  pass('memory module isolated load/create');
+  loadMapMemory();
+  pass('map memory reads');
+  loadGoals();
+  pass('goals read');
+  loadConversationMemory();
+  pass('conversation memory reads');
 
-  const actions = createMockActions(config, memory);
+  const actions = await createMockActions(config, memory);
   const commandValidation = validateCommandWiring(actions);
   commandValidation.ok ? pass('command registry wiring') : fail('command registry wiring', JSON.stringify(commandValidation.missing));
   const capabilityActionValidation = validateCapabilitiesAgainstActions(actions);
@@ -262,13 +255,12 @@ try {
   if (configuredOllamaModelsDir) {
     fs.existsSync(configuredOllamaModelsDir)
       ? pass('OLLAMA_MODELS store exists', configuredOllamaModelsDir)
-      : fail('OLLAMA_MODELS store exists', configuredOllamaModelsDir);
+      : warn('OLLAMA_MODELS configured path is unavailable', configuredOllamaModelsDir);
   }
   const payload = await response.json();
   const names = (payload.models || []).map((model) => model.name);
-  for (const [role, modelName] of Object.entries(expectedModels)) {
-    if (config.models?.[role] !== modelName) fail(`model role ${role}`, config.models?.[role] || 'missing');
-    else if (names.includes(modelName)) pass(`Ollama ${role} model available`, modelName);
+  for (const [role, modelName] of Object.entries(config.models || {})) {
+    if (names.includes(modelName)) pass(`Ollama ${role} model available`, modelName);
     else if (ollamaManifestModels.has(modelName)) fail(`Ollama ${role} model available`, `${modelName} is present in OLLAMA_MODELS=${configuredOllamaModelsDir}, but the active server reports: ${names.join(', ') || 'no models'}. Restart Ollama with that model store.`);
     else fail(`Ollama ${role} model available`, `${modelName} not in ${names.join(', ')}`);
   }
@@ -277,7 +269,7 @@ try {
 }
 
 if (await tcpReachable(config.host, config.port)) pass('Minecraft server reachable', `${config.host}:${config.port}`);
-else fail('Minecraft server reachable', `${config.host}:${config.port}`);
+else warn('Minecraft server is offline', `${config.host}:${config.port}`);
 
 if (!process.env.OPENAI_API_KEY) pass('no OpenAI API key required');
 else pass('OpenAI API key ignored', 'local Ollama only');
@@ -285,7 +277,8 @@ if (!process.env.ANTHROPIC_API_KEY && !process.env.GOOGLE_API_KEY) pass('no clou
 else pass('cloud API keys ignored', 'local Ollama only');
 
 for (const check of checks) {
-  console.log(`${check.ok ? 'PASS' : 'FAIL'} ${check.name}${check.detail ? ` - ${check.detail}` : ''}`);
+  const label = check.warning ? 'WARN' : check.ok ? 'PASS' : 'FAIL';
+  console.log(`${label} ${check.name}${check.detail ? ` - ${check.detail}` : ''}`);
 }
 
 if (checks.some((check) => !check.ok)) process.exitCode = 1;

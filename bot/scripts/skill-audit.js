@@ -1,16 +1,19 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   generateSkillSummary,
   listRiskySkills,
   listUnimplementedSkills,
   validateSkillDefinitions
 } from '../skillRegistry.js';
-import { loadSkillMemory, skillMemoryPath } from '../skillMemory.js';
+import { loadSkillMemory } from '../skillMemory.js';
 import { loadConfig } from '../config.js';
 import { createMemory } from '../memory.js';
 import { createActions } from '../actions.js';
 import { createCancellation } from '../cancellation.js';
 
-function createMockActions(config, memory) {
+async function createMockActions(config, memory) {
   const bot = {
     mcaiConfig: config,
     username: config.botUsername,
@@ -43,14 +46,16 @@ function createMockActions(config, memory) {
 }
 
 const config = loadConfig();
-const actions = createMockActions(config, createMemory(config.memoryPath));
+const auditDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcai-skill-audit-'));
+const actions = await createMockActions(config, createMemory(path.join(auditDir, 'memory.json')));
 const validation = validateSkillDefinitions(actions);
 const summary = generateSkillSummary();
-const memory = loadSkillMemory();
+const auditSkillMemoryPath = path.join(auditDir, 'skill-memory.json');
+const memory = loadSkillMemory(auditSkillMemoryPath);
 
 console.log('Skill audit');
 console.log(`Definitions: ${validation.count}`);
-console.log(`Skill memory: ${skillMemoryPath}`);
+console.log(`Skill memory: ${auditSkillMemoryPath} (isolated)`);
 console.log(`Tracked skill stats: ${Object.keys(memory.skills || {}).length}`);
 console.log('');
 

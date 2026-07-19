@@ -15,8 +15,8 @@ Files still live as flat `bot/*.js` siblings today. This folder is the **target*
 | `planning/` | 1 | goals/skills |
 | `learning/` | 1 | idle/learning |
 | `combat/` | 2 parked | `experimentalCombatEnabled` |
-| `curriculum/` | 2 parked | `curriculumExecutionEnabled` |
-| `progression/` | 2 parked | `progressionExecutionEnabled` |
+| `curriculum/` | removed | archived; live tree has compatibility stubs only |
+| `progression/` | removed | archived; live tree has compatibility stubs only |
 | `nether/` | 2 parked | `netherSystemEnabled` |
 | `gear/` | 2 parked | gear systems |
 | `villagers/` | 2 parked | `villagerSystemEnabled` |

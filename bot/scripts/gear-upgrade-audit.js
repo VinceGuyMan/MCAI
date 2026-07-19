@@ -38,7 +38,7 @@ for (const fileName of [
 }
 pass('gear upgrade modules exist');
 
-const actionSource = readSource('actions.js');
+const actionSource = readSource('actions/createActions.js');
 for (const actionName of [
   'gear_status',
   'gear_upgrade_status',
@@ -53,9 +53,9 @@ for (const actionName of [
   'brew_potion',
   'nether_gear_readiness'
 ]) {
-  if (!new RegExp(`\\b${actionName}\\b`).test(actionSource)) fail(`actions.js missing ${actionName}`);
+  if (!new RegExp(`\\b${actionName}\\b`).test(actionSource)) fail(`actions/createActions.js missing ${actionName}`);
 }
-pass('gear actions are registered in actions.js');
+pass('gear actions are registered in actions/createActions.js');
 
 const commandNames = new Set(getCommands().map((command) => command.name));
 for (const commandName of ['gear_status', 'enchant_status', 'enchant_item', 'anvil_status', 'anvil_item', 'potion_status', 'use_potion', 'brewing_status', 'brew_potion']) {

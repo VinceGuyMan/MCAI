@@ -51,7 +51,7 @@ const skills = [
   skill('skills_status', 'core', 'Report skill registry category counts and implementation status.', true, 'low', false, [], {}, ['skills_status_reported'], 1000, 10000, 'skills_status'),
   skill('skill_audit', 'core', 'Validate the skill registry and report wiring problems.', true, 'low', false, [], {}, ['skill_audit_reported'], 1000, 10000, 'skill_audit'),
   skill('evidence_status', 'core', 'Report evidence tracking definition and run counts.', true, 'low', false, [], {}, ['evidence_status_reported'], 1000, 10000, 'evidence_status'),
-  skill('progression_status', 'progression', 'Report custom progression status and safe next-milestone context.', true, 'low', false, [], {}, ['progression_status_reported'], 1000, 10000, 'progression_status'),
+  skill('progression_status', 'progression', 'Report custom progression status and safe next-milestone context.', false, 'low', false, [], {}, ['progression_status_reported'], 1000, 10000, 'progression_status'),
 
   skill('come_here', 'movement', 'Pathfind close to ModVinny.', true, 'low', false, ['owner_visible'], {}, ['near_owner'], 3000, 60000, 'comeToOwner'),
   skill('follow_owner', 'movement', 'Follow ModVinny at the configured follow distance.', true, 'low', false, ['owner_visible'], {}, ['follow_goal_set'], 3000, 30000, 'followOwner'),

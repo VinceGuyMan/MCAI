@@ -7,7 +7,7 @@ Companion to `ARCHITECTURE.md` and `bot/domains.json`.
 Regenerate a rough graph (when Node is on PATH):
 
 ```powershell
-cd F:\Games\MCAI\bot
+Set-Location .\bot
 node scripts/analyze-modules.js
 ```
 
@@ -61,8 +61,8 @@ node scripts/analyze-modules.js
 
 | Domain | Files | Config flag |
 |--------|-------|-------------|
-| Curriculum | `curriculumEngine.js`, `curriculumExecutor.js`, `curriculumGuard.js`, `curriculumMemory.js`, `curriculumScoring.js`, `curriculumTemplates.js` | `curriculumExecutionEnabled` |
-| Progression | `progressionAdvisor.js`, `progressionEvidence.js`, `progressionPaths.js`, `progressionPlanner.js`, `progressionRegistry.js`, `progressionState.js`, `progressionSystem.js`, `progressionTracker.js`, `vanillaAdvancementBridge.js` | `progressionExecutionEnabled` |
+| Curriculum | retired compatibility stubs at the old module paths | removed; execution flag stays false |
+| Progression | retired compatibility stubs at the old module paths | removed; execution flag stays false |
 | Nether | `netherPrep.js`, `netherGear.js`, `netherMemory.js`, `netherSafety.js`, `netherScout.js`, `portalManager.js` | `netherSystemEnabled` |
 | Gear / magic | `gearScore.js`, `gearMemory.js`, `gearSafety.js`, `gearUpgradeSystem.js`, `enchanting.js`, `anvilSystem.js`, `potionSystem.js`, `brewing.js` | gear / brew config |
 | Villagers | `villagerMemory.js`, `villagerScanner.js`, `villagerTrading.js`, `tradeScoring.js`, `economyManager.js`, `tradeSafety.js`, `villageProtection.js`, `villagerEconomy.js` | `villagerSystemEnabled` |

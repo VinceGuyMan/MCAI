@@ -7,9 +7,11 @@ import path from 'node:path';
 import net from 'node:net';
 import http from 'node:http';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { spawn, execFileSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
+import { createInstallConfig, explainConfigErrors, isPlaceholderToken, validateConfig } from '../bot/configSchema.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const Root = path.resolve(__dirname, '..');
@@ -19,6 +21,8 @@ const BotEntry = path.join(BotDir, 'bot.js');
 const RuntimeDir = path.join(Root, '.runtime');
 const LogPath = path.join(RuntimeDir, 'aio-node.log');
 const SetupStatePath = path.join(RuntimeDir, 'setup-state.json');
+const ManagedChildEntry = path.join(__dirname, 'managed-child.mjs');
+const ServerStatePath = path.join(RuntimeDir, 'managed-server.json');
 
 fs.mkdirSync(RuntimeDir, { recursive: true });
 
@@ -36,6 +40,74 @@ function readJsonFile(filePath) {
 
 function loadConfig() {
   return readJsonFile(ConfigPath);
+}
+
+export function initializeConfigIfMissing(filePath = ConfigPath, overrides = {}) {
+  if (fs.existsSync(filePath)) return false;
+  const config = createInstallConfig(overrides);
+  fs.writeFileSync(filePath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  return true;
+}
+
+export function upgradeLegacyConfigSecrets(filePath = ConfigPath) {
+  if (!fs.existsSync(filePath)) return [];
+  const config = readJsonFile(filePath);
+  const updated = [];
+  if (isPlaceholderToken(config.dashboardToken)) {
+    config.dashboardToken = crypto.randomBytes(24).toString('base64url');
+    updated.push('dashboardToken');
+  }
+  if (isPlaceholderToken(config.serverPluginToken)) {
+    config.serverPluginToken = crypto.randomBytes(24).toString('base64url');
+    updated.push('serverPluginToken');
+  }
+  if (config.allowLanServerBinding === undefined) {
+    config.allowLanServerBinding = false;
+    updated.push('allowLanServerBinding');
+  }
+  if (config.firstRunComplete === undefined && /^[A-Za-z0-9_]{1,16}$/.test(String(config.ownerUsername || '')) && config.ownerUsername !== 'Player') {
+    config.firstRunComplete = true;
+    updated.push('firstRunComplete');
+  }
+  if (!updated.length) return updated;
+  const tmp = `${filePath}.tmp-aio-node`;
+  fs.writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+  fs.renameSync(tmp, filePath);
+  return updated;
+}
+
+function needsFirstRunSetup(config = {}) {
+  return config.firstRunComplete === false || !config.ownerUsername || config.ownerUsername === 'Player';
+}
+
+async function completeFirstRunSetup(rl) {
+  let config = loadConfig();
+  if (!needsFirstRunSetup(config)) return true;
+  console.log('\n--- MCAI first-run setup ---\n');
+  console.log('MCAI created a local config with random dashboard and bridge tokens.');
+  let ownerUsername = '';
+  while (!/^[A-Za-z0-9_]{1,16}$/.test(ownerUsername)) {
+    ownerUsername = (await ask(rl, 'Your Minecraft username: ')).trim();
+    if (!/^[A-Za-z0-9_]{1,16}$/.test(ownerUsername)) console.log('Use a 1-16 character Minecraft name (letters, numbers, underscore).');
+  }
+  const requestedBot = (await ask(rl, 'Bot username [tj]: ')).trim() || 'tj';
+  const botUsername = /^[A-Za-z0-9_]{1,16}$/.test(requestedBot) && requestedBot !== ownerUsername
+    ? requestedBot
+    : 'tj';
+  saveConfigPatch({
+    ownerUsername,
+    botUsername,
+    friendlyPlayers: [ownerUsername],
+    firstRunComplete: true
+  });
+  config = loadConfig();
+  const validation = validateConfig(config);
+  if (!validation.ok) {
+    console.log(explainConfigErrors(validation));
+    return false;
+  }
+  console.log(`Configured owner ${ownerUsername} and bot ${botUsername}.`);
+  return true;
 }
 
 function saveConfigPatch(patch) {
@@ -133,7 +205,7 @@ function findOllama() {
   return null;
 }
 
-function spawnDetached(command, args, cwd, title) {
+function spawnDetached(command, args, cwd, title, options = {}) {
   // Windows START quirk: the first quoted arg is ALWAYS the window title.
   //   start "something"   -> looks for something.exe  (BAD if title-only intent fails)
   // Correct pattern:
@@ -164,10 +236,12 @@ function spawnDetached(command, args, cwd, title) {
     `echo [${safeTitle}] starting...`,
     `echo Working dir: ${workDir}`,
     `"${cmdPath}" ${argParts.join(' ')}`,
+    'set EC=%ERRORLEVEL%',
     'echo.',
-    'echo Process exited with code %ERRORLEVEL%.',
-    'echo Press any key to close this window.',
-    'pause >nul'
+    'echo Process exited with code %EC%.',
+    ...(options.pauseOnExit === false
+      ? ['exit /b %EC%']
+      : ['echo Press any key to close this window.', 'pause >nul'])
   ].join('\r\n');
 
   fs.writeFileSync(batPath, bat, 'utf8');
@@ -187,13 +261,27 @@ function spawnDetached(command, args, cwd, title) {
   log(`spawned: ${safeTitle} via ${batPath} -> ${command} ${(args || []).join(' ')}`);
 }
 
-async function ensureEula() {
+export function eulaIsAccepted(filePath = path.join(Root, 'eula.txt')) {
+  if (!fs.existsSync(filePath)) return false;
+  return /^\s*eula\s*=\s*true\s*$/im.test(fs.readFileSync(filePath, 'utf8'));
+}
+
+async function ensureEula({ rl = null, acceptEula = false } = {}) {
   const eula = path.join(Root, 'eula.txt');
-  fs.writeFileSync(
-    eula,
-    '# https://aka.ms/MinecraftEULA\r\neula=true\r\n',
-    'utf8'
-  );
+  if (eulaIsAccepted(eula)) return true;
+  console.log('Minecraft server use requires accepting the Minecraft EULA: https://aka.ms/MinecraftEULA');
+  let accepted = acceptEula === true;
+  if (!accepted && rl) {
+    const answer = (await ask(rl, 'Do you accept the Minecraft EULA? [y/N]: ')).trim().toLowerCase();
+    accepted = answer === 'y' || answer === 'yes';
+  }
+  if (!accepted) {
+    console.log('EULA not accepted. Paper was not started. Re-run interactively or pass --accept-eula after reviewing it.');
+    return false;
+  }
+  fs.writeFileSync(eula, '# https://aka.ms/MinecraftEULA\r\neula=true\r\n', 'utf8');
+  console.log('Minecraft EULA acceptance saved locally.');
+  return true;
 }
 
 async function ensureServerProperties(cfg) {
@@ -212,14 +300,85 @@ async function ensureServerProperties(cfg) {
   fs.writeFileSync(p, `${text.trim()}\n`, 'utf8');
 }
 
+function yamlScalar(value) {
+  if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+  return JSON.stringify(String(value ?? ''));
+}
+
+function setYamlSectionValue(text, section, key, value) {
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+  let sectionStart = lines.findIndex((line) => line.trim() === `${section}:` && !/^\s/.test(line));
+  if (sectionStart < 0) {
+    if (lines.length && lines[lines.length - 1] !== '') lines.push('');
+    sectionStart = lines.length;
+    lines.push(`${section}:`);
+  }
+
+  let sectionEnd = lines.length;
+  for (let i = sectionStart + 1; i < lines.length; i += 1) {
+    if (/^[^\s#][^:]*:\s*/.test(lines[i])) {
+      sectionEnd = i;
+      break;
+    }
+  }
+
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const keyPattern = new RegExp(`^\\s{2}${escapedKey}:`);
+  const keyIndex = lines.findIndex((line, index) => index > sectionStart && index < sectionEnd && keyPattern.test(line));
+  const nextLine = `  ${key}: ${yamlScalar(value)}`;
+  if (keyIndex >= 0) lines[keyIndex] = nextLine;
+  else lines.splice(sectionEnd, 0, nextLine);
+  return lines.join('\n');
+}
+
+export function syncBridgePluginConfig(cfg, targetRoot = Root) {
+  const pluginsDir = path.join(targetRoot, 'plugins');
+  const pluginConfigPath = path.join(pluginsDir, 'MCAIBridge', 'config.yml');
+  const pluginJarInstalled = fs.existsSync(pluginsDir) && fs.readdirSync(pluginsDir)
+    .some((name) => /^mcaibridge(?:-.*)?\.jar$/i.test(name));
+  if (!pluginJarInstalled && !fs.existsSync(pluginConfigPath)) return { managed: false, changed: false };
+
+  const templatePath = path.join(targetRoot, 'server-plugin', 'src', 'main', 'resources', 'config.yml');
+  let text = fs.existsSync(pluginConfigPath)
+    ? fs.readFileSync(pluginConfigPath, 'utf8')
+    : (fs.existsSync(templatePath) ? fs.readFileSync(templatePath, 'utf8') : 'bridge:\n\nfeatures:\n');
+
+  const bridgeValues = {
+    enabled: cfg.serverPluginBridgeEnabled !== false,
+    host: cfg.serverPluginHost || '127.0.0.1',
+    port: Number(cfg.serverPluginPort || 8791),
+    'require-token': cfg.serverPluginRequireToken !== false,
+    token: cfg.serverPluginToken || '',
+    'allow-public-bind': cfg.serverPluginLocalOnly === false,
+    'allow-control': cfg.serverPluginAllowControl !== false,
+    'allow-dangerous-control': false,
+    'event-buffer-size': Number(cfg.serverPluginEventBufferSize || 500)
+  };
+  const featureValues = {
+    events: cfg.serverPluginExposeEvents !== false,
+    regions: cfg.serverPluginExposeRegionRegistry !== false,
+    advancements: cfg.serverPluginExposeAdvancements !== false,
+    'death-events': cfg.serverPluginExposeDeathEvents !== false,
+    'emergency-stop': cfg.serverPluginAllowControl !== false && cfg.serverPluginAllowEmergencyStop !== false,
+    'arbitrary-commands': false,
+    teleport: false,
+    'give-items': false
+  };
+  for (const [key, value] of Object.entries(bridgeValues)) text = setYamlSectionValue(text, 'bridge', key, value);
+  for (const [key, value] of Object.entries(featureValues)) text = setYamlSectionValue(text, 'features', key, value);
+  text = `${text.trim()}\n`;
+
+  const previous = fs.existsSync(pluginConfigPath) ? fs.readFileSync(pluginConfigPath, 'utf8').replace(/\r\n/g, '\n') : null;
+  if (previous === text) return { managed: true, changed: false, path: pluginConfigPath };
+  fs.mkdirSync(path.dirname(pluginConfigPath), { recursive: true });
+  const tmpPath = `${pluginConfigPath}.tmp-aio-node`;
+  fs.writeFileSync(tmpPath, text, 'utf8');
+  fs.renameSync(tmpPath, pluginConfigPath);
+  return { managed: true, changed: true, path: pluginConfigPath };
+}
+
 function isBotProcessRunning() {
-  const botNeedle = BotEntry.replace(/\\/g, '/').toLowerCase();
-  const processes = listWindowsProcesses();
-  return processes.some((proc) => {
-    const name = String(proc.name || '').toLowerCase();
-    const cmd = String(proc.commandLine || '').replace(/\\/g, '/').toLowerCase();
-    return name === 'node.exe' && (cmd.includes('bot.js') || cmd.includes(botNeedle));
-  });
+  return listWindowsProcesses().some((processInfo) => processMatchesRole(processInfo, 'bot'));
 }
 
 async function statusLines(cfg) {
@@ -262,26 +421,27 @@ async function statusLines(cfg) {
 }
 
 function printMenu(st, cfg) {
+  const botName = cfg.botUsername || 'tj';
   console.clear();
   console.log('========================================');
   console.log('          MCAI  All-In-One');
-  console.log('   Paper + tj bot + local LLM setup');
+  console.log(`   Paper + ${botName} bot + local LLM setup`);
   console.log('========================================');
   console.log('');
-  console.log(` Owner: ${cfg.ownerUsername || 'ModVinny'}   Bot: ${cfg.botUsername || 'tj'}`);
+  console.log(` Owner: ${cfg.ownerUsername || 'Player'}   Bot: ${botName}`);
   console.log(` Mode:  ${cfg.interactionMode || cfg.playMode || 'companion'} (companion = living Player 2)`);
   console.log(` MC:    ${cfg.minecraftVersion || '?'}   Join: ${st.host}:${st.port}`);
   console.log(` LLM:   ${st.provider}   Model: ${st.model}   Mode: ${cfg.llmMode || 'dialogue'}`);
   console.log(` URL:   ${st.ollamaUrl || 'http://127.0.0.1:11434'}`);
   console.log('');
-  console.log(` [${st.server ? 'ON' : '--'}] Paper server   [${st.bot ? 'ON' : '--'}] Bot (tj)`);
+  console.log(` [${st.server ? 'ON' : '--'}] Paper server   [${st.bot ? 'ON' : '--'}] Bot (${botName})`);
   console.log(` [${st.dash ? 'ON' : '--'}] Dashboard       [${st.llm ? 'ON' : '--'}] LLM`);
   if (st.dash) console.log(`      Dashboard: http://${st.dashHost}:${st.dashPort}`);
   console.log('');
   console.log('  --- Start ---');
   console.log('  1) Setup LLM (provider + model)');
   console.log('  2) Start Paper server only');
-  console.log('  3) Start bot only (tj)');
+  console.log(`  3) Start bot only (${botName})`);
   console.log('  4) Start All (Paper + bot)');
   console.log('  5) Start server + browser  (Paper + dashboard)');
   console.log('  --- Browser ---');
@@ -360,21 +520,99 @@ function listWindowsProcesses() {
   }
 }
 
-function stopBotOnly() {
+function normalizedPathText(value) {
+  return String(value || '').replace(/\\/g, '/').toLowerCase();
+}
+
+export function processMatchesRole(processInfo, role, root = Root) {
+  const name = String(processInfo?.name || '').toLowerCase();
+  const commandLine = normalizedPathText(processInfo?.commandLine);
+  const rootNeedle = normalizedPathText(path.resolve(root));
+  if (role === 'bot') {
+    const botNeedle = normalizedPathText(path.join(root, 'bot', 'bot.js'));
+    return name === 'node.exe' && commandLine.includes(botNeedle);
+  }
+  if (role === 'dashboard') {
+    const dashboardNeedle = normalizedPathText(path.join(root, 'dashboard', 'server.js'));
+    return name === 'node.exe' && commandLine.includes(dashboardNeedle);
+  }
+  if (role === 'server') {
+    return (name === 'java.exe' || name === 'javaw.exe')
+      && commandLine.includes('paper-')
+      && commandLine.includes('.jar')
+      && commandLine.includes(rootNeedle);
+  }
+  return false;
+}
+
+function processIsRunning(pid) {
+  return listWindowsProcesses().some((processInfo) => processInfo.pid === Number(pid));
+}
+
+function readManagedServerState() {
+  try {
+    const state = readJsonFile(ServerStatePath);
+    if (state.role !== 'server') return null;
+    if (normalizedPathText(path.resolve(String(state.root || ''))) !== normalizedPathText(Root)) return null;
+    if (!Number.isInteger(Number(state.childPid)) || !Number.isInteger(Number(state.controlPort))) return null;
+    if (!state.nonce || state.controlHost !== '127.0.0.1') return null;
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+function sendManagedControl(state, action = 'stop', timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ action });
+    const request = http.request({
+      hostname: state.controlHost,
+      port: state.controlPort,
+      path: '/control',
+      method: 'POST',
+      timeout: timeoutMs,
+      headers: {
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(body),
+        'x-mcai-nonce': state.nonce
+      }
+    }, (response) => {
+      response.resume();
+      resolve(response.statusCode >= 200 && response.statusCode < 300);
+    });
+    request.on('error', () => resolve(false));
+    request.on('timeout', () => {
+      request.destroy();
+      resolve(false);
+    });
+    request.end(body);
+  });
+}
+
+async function waitForProcessExit(pid, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!processIsRunning(pid)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return !processIsRunning(pid);
+}
+
+async function confirmForceKill(rl, message) {
+  if (!rl) return false;
+  const answer = (await ask(rl, `${message} [y/N]: `)).trim().toLowerCase();
+  return answer === 'y' || answer === 'yes';
+}
+
+async function stopBotOnly({ force = true } = {}) {
   console.log('Stopping bot only (Paper server left running)...');
   let killed = 0;
-  if (runQuiet('taskkill', ['/F', '/T', '/FI', 'WINDOWTITLE eq MCAI-Bot*'])) {
-    console.log('  closed MCAI-Bot window(s)');
-    killed += 1;
-  }
-  const botNeedle = BotEntry.replace(/\\/g, '/').toLowerCase();
   for (const proc of listWindowsProcesses()) {
-    const cmd = String(proc.commandLine || '').replace(/\\/g, '/').toLowerCase();
-    const name = String(proc.name || '').toLowerCase();
-    if (name !== 'node.exe') continue;
-    if (!(cmd.includes('bot.js') || cmd.includes(botNeedle))) continue;
-    if (cmd.includes('aio-node')) continue;
-    if (runQuiet('taskkill', ['/F', '/T', '/PID', String(proc.pid)])) {
+    if (!processMatchesRole(proc, 'bot')) continue;
+    runQuiet('taskkill', ['/T', '/PID', String(proc.pid)]);
+    await waitForProcessExit(proc.pid, 3000);
+    if (processIsRunning(proc.pid) && force) runQuiet('taskkill', ['/F', '/T', '/PID', String(proc.pid)]);
+    if (!processIsRunning(proc.pid)) {
       console.log(`  stopped bot PID ${proc.pid}`);
       killed += 1;
     }
@@ -385,43 +623,57 @@ function stopBotOnly() {
   return killed;
 }
 
-function stopServerOnly() {
-  console.log('Stopping Paper server only (bot left alone — it will disconnect)...');
-  let killed = 0;
-  if (runQuiet('taskkill', ['/F', '/T', '/FI', 'WINDOWTITLE eq MCAI-Server*'])) {
-    console.log('  closed MCAI-Server window(s)');
-    killed += 1;
-  }
-  const rootNeedle = Root.replace(/\\/g, '/').toLowerCase();
-  for (const proc of listWindowsProcesses()) {
-    const cmd = String(proc.commandLine || '').replace(/\\/g, '/').toLowerCase();
-    const name = String(proc.name || '').toLowerCase();
-    if (name !== 'java.exe') continue;
-    if (!(cmd.includes(rootNeedle) && cmd.includes('paper-') && cmd.includes('.jar'))) continue;
-    if (runQuiet('taskkill', ['/F', '/T', '/PID', String(proc.pid)])) {
-      console.log(`  stopped Paper PID ${proc.pid}`);
-      killed += 1;
+async function stopServerOnly({ force = false, rl = null } = {}) {
+  const managed = readManagedServerState();
+  if (managed && processIsRunning(managed.childPid)) {
+    console.log(`Sending Minecraft "stop" to managed Paper PID ${managed.childPid}...`);
+    const requested = await sendManagedControl(managed, 'stop');
+    if (requested && await waitForProcessExit(managed.childPid, 30000)) {
+      console.log('Paper saved the world and stopped cleanly.');
+      log('stopServerOnly finished (graceful managed stop)');
+      return 1;
     }
+    console.log('Paper did not exit after the graceful stop request.');
+    const allowForce = force || await confirmForceKill(rl, 'Force-kill this exact managed MCAI server process?');
+    if (!allowForce) {
+      console.log('Server left running. Re-run with --force only if graceful shutdown remains stuck.');
+      return 0;
+    }
+    runQuiet('taskkill', ['/F', '/T', '/PID', String(managed.childPid)]);
+    if (managed.supervisorPid) runQuiet('taskkill', ['/F', '/T', '/PID', String(managed.supervisorPid)]);
+    console.log('Paper was force-stopped after graceful shutdown failed. Check the world before restarting.');
+    log('stopServerOnly finished (forced managed fallback)');
+    return 1;
   }
-  if (!killed) console.log('  Paper was not running (or window title differs).');
-  else console.log('Paper stopped.');
-  log(`stopServerOnly finished (actions=${killed})`);
+  console.log('Stopping Paper server only (bot left alone — it will disconnect)...');
+  const legacy = listWindowsProcesses().filter((processInfo) => processMatchesRole(processInfo, 'server'));
+  if (!legacy.length) {
+    console.log('  Paper was not running for this MCAI folder.');
+    return 0;
+  }
+  console.log('  This server predates managed graceful shutdown, so its console cannot receive "stop" automatically.');
+  const allowLegacyForce = force || await confirmForceKill(rl, 'Force-kill the exact legacy MCAI Paper process?');
+  if (!allowLegacyForce) {
+    console.log('  Server left running. Type "stop" in its Paper console for a safe shutdown.');
+    return 0;
+  }
+  let killed = 0;
+  for (const processInfo of legacy) {
+    if (runQuiet('taskkill', ['/F', '/T', '/PID', String(processInfo.pid)])) killed += 1;
+  }
+  console.log(`Force-stopped ${killed} exact MCAI Paper process(es).`);
+  log(`stopServerOnly finished (forced legacy actions=${killed})`);
   return killed;
 }
 
-function stopDashboardOnly() {
+async function stopDashboardOnly({ force = true } = {}) {
   let killed = 0;
-  if (runQuiet('taskkill', ['/F', '/T', '/FI', 'WINDOWTITLE eq MCAI-Dashboard*'])) {
-    console.log('  closed MCAI-Dashboard window(s)');
-    killed += 1;
-  }
-  const dashNeedle = path.join(Root, 'dashboard', 'server.js').replace(/\\/g, '/').toLowerCase();
   for (const proc of listWindowsProcesses()) {
-    const cmd = String(proc.commandLine || '').replace(/\\/g, '/').toLowerCase();
-    const name = String(proc.name || '').toLowerCase();
-    if (name !== 'node.exe') continue;
-    if (!(cmd.includes('dashboard') && cmd.includes('server.js')) && !cmd.includes(dashNeedle)) continue;
-    if (runQuiet('taskkill', ['/F', '/T', '/PID', String(proc.pid)])) {
+    if (!processMatchesRole(proc, 'dashboard')) continue;
+    runQuiet('taskkill', ['/T', '/PID', String(proc.pid)]);
+    await waitForProcessExit(proc.pid, 3000);
+    if (processIsRunning(proc.pid) && force) runQuiet('taskkill', ['/F', '/T', '/PID', String(proc.pid)]);
+    if (!processIsRunning(proc.pid)) {
       console.log(`  stopped dashboard PID ${proc.pid}`);
       killed += 1;
     }
@@ -429,12 +681,12 @@ function stopDashboardOnly() {
   return killed;
 }
 
-function stopAll() {
+async function stopAll(options = {}) {
   console.log('Stopping MCAI processes (bot + Paper + dashboard)...');
   let killed = 0;
-  killed += stopBotOnly() || 0;
-  killed += stopServerOnly() || 0;
-  killed += stopDashboardOnly() || 0;
+  killed += await stopBotOnly(options) || 0;
+  killed += await stopServerOnly(options) || 0;
+  killed += await stopDashboardOnly(options) || 0;
   if (!killed) {
     console.log('  nothing matched (already stopped, or titles/paths differ).');
     console.log('  Manual: close MCAI-Bot / MCAI-Server / MCAI-Dashboard windows.');
@@ -467,8 +719,19 @@ function paperHeapPlan() {
   return { freeGb, totalGb, maxHeapGb };
 }
 
+function validateLaunchConfig(config) {
+  const result = validateConfig(config);
+  if (!result.ok) {
+    console.log('ERROR: MCAI configuration is not safe to launch:');
+    console.log(explainConfigErrors(result));
+    return false;
+  }
+  return true;
+}
+
 /** Start Paper only. Returns true if listening (or already was). */
-async function startPaperServer(cfg, { waitForReady = true } = {}) {
+async function startPaperServer(cfg, { waitForReady = true, rl = null, acceptEula = false } = {}) {
+  if (!validateLaunchConfig(cfg)) return false;
   const version = cfg.minecraftVersion || '1.21.11';
   const java = findJava();
   if (!java) {
@@ -481,8 +744,10 @@ async function startPaperServer(cfg, { waitForReady = true } = {}) {
     return false;
   }
 
-  await ensureEula();
+  if (!(await ensureEula({ rl, acceptEula }))) return false;
   await ensureServerProperties(cfg);
+  const bridgeConfig = syncBridgePluginConfig(cfg);
+  if (bridgeConfig.changed) console.log('Synchronized the installed MCAIBridge plugin with the local MCAI security settings.');
 
   const host = cfg.host || '127.0.0.1';
   const port = Number(cfg.port || 25565);
@@ -502,7 +767,17 @@ async function startPaperServer(cfg, { waitForReady = true } = {}) {
 
   const javaArgs = ['-Xms512M', `-Xmx${maxHeapGb}G`, '-jar', path.basename(jar), '--nogui'];
   console.log(`Starting Paper server window (heap max ${maxHeapGb}G)...`);
-  spawnDetached(java, javaArgs, Root, 'MCAI-Server');
+  try { if (fs.existsSync(ServerStatePath)) fs.unlinkSync(ServerStatePath); } catch { /* stale state is harmless */ }
+  const nonce = crypto.randomBytes(24).toString('base64url');
+  spawnDetached(process.execPath, [
+    ManagedChildEntry,
+    '--role', 'server',
+    '--state', ServerStatePath,
+    '--cwd', Root,
+    '--nonce', nonce,
+    '--', java,
+    ...javaArgs
+  ], Root, 'MCAI-Server', { pauseOnExit: false });
 
   if (!waitForReady) return true;
 
@@ -546,7 +821,7 @@ async function ensureDashboard(cfg, { open = false, page = '/' } = {}) {
   }
 
   console.log(`Starting dashboard window on ${baseUrl}...`);
-  spawnDetached(process.execPath, [dashEntry], path.join(Root, 'dashboard'), 'MCAI-Dashboard');
+  spawnDetached(process.execPath, [dashEntry], path.join(Root, 'dashboard'), 'MCAI-Dashboard', { pauseOnExit: false });
 
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
@@ -563,9 +838,9 @@ async function ensureDashboard(cfg, { open = false, page = '/' } = {}) {
 }
 
 /** Paper + dashboard + open browser (no bot). Good for setup / web UI first. */
-async function startServerAndBrowser(cfg, { page = '/' } = {}) {
+async function startServerAndBrowser(cfg, { page = '/', rl = null, acceptEula = false } = {}) {
   console.log('\n--- Start server + browser ---\n');
-  const paperOk = await startPaperServer(cfg, { waitForReady: true });
+  const paperOk = await startPaperServer(cfg, { waitForReady: true, rl, acceptEula });
   if (!paperOk) {
     console.log('Paper did not start; still trying dashboard so you can use Setup in the browser.');
   }
@@ -575,7 +850,7 @@ async function startServerAndBrowser(cfg, { page = '/' } = {}) {
   console.log('');
   console.log(paperOk ? `  Minecraft: ${host}:${port}` : '  Minecraft: not ready');
   console.log(dashUrl ? `  Browser:   ${dashUrl}${page === '/' ? '' : page}` : '  Browser:   dashboard not ready');
-  console.log('  (Bot not started — use Start All when you want tj in-game.)');
+  console.log(`  (Bot not started — use Start All when you want ${cfg.botUsername || 'tj'} in-game.)`);
   return { paperOk, dashUrl };
 }
 
@@ -816,6 +1091,7 @@ async function ensureOllamaIfNeeded(cfg) {
 /** Start tj bot only (expects Paper already up, or will retry). */
 async function startBotOnly(cfg, { requireServer = true } = {}) {
   console.log('\n--- Start bot only ---\n');
+  if (!validateLaunchConfig(cfg)) return false;
   if (!(await ensureBotDependencies())) return false;
 
   const host = cfg.host || '127.0.0.1';
@@ -831,6 +1107,11 @@ async function startBotOnly(cfg, { requireServer = true } = {}) {
     console.log('Bot process already looks running (node bot.js).');
     console.log('  Stop bot first (menu 8) if you want a fresh start.');
     return true;
+  }
+
+  const stoppedStandaloneDashboard = await stopDashboardOnly({ force: true });
+  if (stoppedStandaloneDashboard) {
+    console.log('Stopped the standalone dashboard so TJ can host live telemetry on the same port.');
   }
 
   await ensureOllamaIfNeeded(cfg);
@@ -874,31 +1155,31 @@ async function startBotOnly(cfg, { requireServer = true } = {}) {
   console.log('Bot starting.');
   console.log(`  Join Minecraft: ${host}:${port}`);
   console.log(`  Dashboard (when bot is up): http://${cfg.dashboardHost || '127.0.0.1'}:${cfg.dashboardPort || 8787}`);
-  console.log('  Chat: tj help');
+  console.log(`  Chat: ${cfg.botUsername || 'tj'} help`);
   console.log('  Kill bot only: menu 8, or Ctrl+C in the MCAI-Bot window.');
   return true;
 }
 
-async function startPaperOnly(cfg) {
+async function startPaperOnly(cfg, options = {}) {
   console.log('\n--- Start Paper server only ---\n');
-  const ok = await startPaperServer(cfg, { waitForReady: true });
+  const ok = await startPaperServer(cfg, { ...options, waitForReady: true });
   if (ok) {
     const host = cfg.host || '127.0.0.1';
     const port = Number(cfg.port || 25565);
     console.log(`Paper ready. Join: ${host}:${port}`);
-    console.log('Bot is NOT started — use menu 3 when you want tj.');
+    console.log(`Bot is NOT started — use menu 3 when you want ${cfg.botUsername || 'tj'}.`);
   }
   return ok;
 }
 
-async function startAll(cfg) {
+async function startAll(cfg, options = {}) {
   console.log('\n--- Start All (Paper + bot) ---\n');
   if (!(await ensureBotDependencies())) return;
   await ensureOllamaIfNeeded(cfg);
 
   const host = cfg.host || '127.0.0.1';
   const port = Number(cfg.port || 25565);
-  const paperOk = await startPaperServer(cfg, { waitForReady: true });
+  const paperOk = await startPaperServer(cfg, { ...options, waitForReady: true });
   if (!paperOk) {
     console.log('Check the MCAI-Server window for Java/Paper errors, then try again.');
     return;
@@ -910,11 +1191,15 @@ async function startAll(cfg) {
   console.log('Started All.');
   console.log(`  Join Minecraft: ${host}:${port}`);
   console.log(`  Dashboard: http://${cfg.dashboardHost || '127.0.0.1'}:${cfg.dashboardPort || 8787}`);
-  console.log('  Chat as owner to the bot (e.g. tj help)');
+  console.log(`  Chat as owner to the bot (e.g. ${cfg.botUsername || 'tj'} help)`);
 }
 
 async function main() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  if (!(await completeFirstRunSetup(rl))) {
+    rl.close();
+    return;
+  }
   let running = true;
   while (running) {
     const cfg = loadConfig();
@@ -927,7 +1212,7 @@ async function main() {
         break;
       case '2':
       case 'paper':
-        await startPaperOnly(loadConfig());
+        await startPaperOnly(loadConfig(), { rl });
         await ask(rl, 'Press Enter...');
         break;
       case '3':
@@ -938,13 +1223,13 @@ async function main() {
         break;
       case '4':
       case 'all':
-        await startAll(loadConfig());
+        await startAll(loadConfig(), { rl });
         await ask(rl, 'Press Enter...');
         break;
       case '5':
       case 'sb':
       case 'web':
-        await startServerAndBrowser(loadConfig(), { page: '/' });
+        await startServerAndBrowser(loadConfig(), { page: '/', rl });
         await ask(rl, 'Press Enter...');
         break;
       case '6': {
@@ -958,17 +1243,17 @@ async function main() {
         break;
       }
       case '8':
-        stopBotOnly();
+        await stopBotOnly();
         await ask(rl, 'Press Enter...');
         break;
       case '9':
-        stopServerOnly();
+        await stopServerOnly({ rl });
         await ask(rl, 'Press Enter...');
         break;
       case 's':
       case 'stop':
       case '10':
-        stopAll();
+        await stopAll({ rl });
         await ask(rl, 'Press Enter...');
         break;
       case 'r':
@@ -1008,7 +1293,35 @@ async function runCli(argv) {
     console.log('  MCAI.cmd --stop-server     stop Paper only');
     console.log('  MCAI.cmd --stop            stop bot + Paper + dashboard');
     console.log('  MCAI.cmd --status          print status');
+    console.log('  --accept-eula              accept the Minecraft EULA after reviewing its URL');
+    console.log('  --force                    allow exact-PID force kill if graceful stop fails');
     return;
+  }
+
+  const force = wants('--force');
+  const acceptEula = wants('--accept-eula');
+
+  if (wants('--stop-bot')) {
+    await stopBotOnly({ force: true });
+    return;
+  }
+
+  if (wants('--stop-server') || wants('--stop-paper')) {
+    await stopServerOnly({ force });
+    return;
+  }
+
+  if (wants('--stop')) {
+    await stopAll({ force });
+    return;
+  }
+
+  const createdConfig = initializeConfigIfMissing();
+  if (createdConfig) console.log(`Created first-run config: ${ConfigPath}`);
+
+  if (!createdConfig && !wants('--status')) {
+    const upgraded = upgradeLegacyConfigSecrets();
+    if (upgraded.length) console.log(`Upgraded legacy local config defaults: ${upgraded.join(', ')}.`);
   }
 
   if (wants('--status')) {
@@ -1018,44 +1331,40 @@ async function runCli(argv) {
     console.log(`Server:   ${st.server ? 'ON' : 'OFF'}  (${st.host}:${st.port})`);
     console.log(`Bot:      ${st.bot ? 'ON' : 'OFF'}`);
     console.log(`Dashboard:${st.dash ? 'ON' : 'OFF'}  (http://${st.dashHost}:${st.dashPort})`);
-    console.log(`Owner:    ${cfg.ownerUsername || 'ModVinny'}   Bot name: ${cfg.botUsername || 'tj'}`);
+    console.log(`Owner:    ${cfg.ownerUsername || 'Player'}   Bot name: ${cfg.botUsername || 'tj'}`);
     console.log(`Mode:     ${cfg.interactionMode || cfg.playMode || 'companion'}   LLM: ${cfg.llmMode || 'dialogue'}`);
     return;
   }
 
-  if (wants('--stop-bot')) {
-    stopBotOnly();
-    return;
-  }
-
-  if (wants('--stop-server') || wants('--stop-paper')) {
-    stopServerOnly();
-    return;
-  }
-
-  if (wants('--stop')) {
-    stopAll();
+  const config = loadConfig();
+  const requestedStart = wants('--start-bot') || wants('--bot')
+    || wants('--start-server') || wants('--paper') || wants('--start')
+    || wants('--server-browser') || wants('--web');
+  if (requestedStart && needsFirstRunSetup(config)) {
+    console.log('First-run identity setup is incomplete. Run MCAI.cmd without flags and enter your Minecraft username.');
+    process.exitCode = 2;
     return;
   }
 
   if (wants('--start-bot') || wants('--bot')) {
-    await startBotOnly(loadConfig());
+    await startBotOnly(config);
     return;
   }
 
   if (wants('--start-server') || wants('--paper')) {
-    await startPaperOnly(loadConfig());
+    await startPaperOnly(config, { acceptEula });
     return;
   }
 
   if (wants('--start')) {
-    await startAll(loadConfig());
+    await startAll(config, { acceptEula });
     return;
   }
 
   if (wants('--server-browser') || wants('--web')) {
-    await startServerAndBrowser(loadConfig(), {
-      page: wants('--setup') ? '/setup.html' : '/'
+    await startServerAndBrowser(config, {
+      page: wants('--setup') ? '/setup.html' : '/',
+      acceptEula
     });
     return;
   }
@@ -1063,7 +1372,9 @@ async function runCli(argv) {
   await main();
 }
 
-runCli(process.argv).catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runCli(process.argv).catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

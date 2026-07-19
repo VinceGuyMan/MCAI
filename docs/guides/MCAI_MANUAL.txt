@@ -1,1415 +1,216 @@
-MCAI / tj USER MANUAL
-Generated for ModVinny
-Project folder: E:\Games\MCAI
-Bot name: tj
-Minecraft version: 1.21.11
-Brain: local Ollama only
-Main router/planner model: qwen3:14b
-Dialogue model: mistral-nemo:12b
-Structured/code helper model: qwen2.5-coder:14b
-Fallback model: phi4-mini:latest
-Command coverage review: implemented skills, documented command families, and common direct-chat aliases are wired to real handlers as of 2026-05-09.
+MCAI COMPANION MANUAL
+=====================
 
-This manual covers:
-1. How to start and test the bot
-2. Important safety rules
-3. Dashboard and plugin bridge notes
-4. Natural speech commands
-5. All registered Minecraft chat commands
-6. Confirmation pattern
-7. FAQ and troubleshooting
-8. Quick command cheat sheet
+MCAI runs a local Paper server and a physical Mineflayer companion. The
+default bot name is "tj", but both the bot name and owner are private
+configuration. A local LLM is optional and is used mainly for dialogue;
+movement, collection, crafting, and safety remain code-first.
 
+PRODUCT SCOPE
+-------------
 
-============================================================
-1. QUICK START
-============================================================
+The supported public-alpha focus is a dependable surface companion:
 
-Recommended full local startup:
+- come, follow, stay, and emergency stop
+- owner-only action commands
+- food and inventory awareness
+- wood, stone, coal, and surface-iron collection
+- basic tool crafting
+- charcoal and iron smelting
+- short companion dialogue and narration
+- local telemetry and safe controls
 
-1. Start Ollama locally.
-   The project expects the model store at:
-   E:\Ollama Models
-   If you start Ollama manually first, use:
-   $env:OLLAMA_MODELS = "E:\Ollama Models"
-   ollama serve
-2. Make sure these local Ollama models are installed:
-   qwen3:14b
-   mistral-nemo:12b
-   qwen2.5-coder:14b
-   phi4-mini:latest
-   You can verify the exact role-model setup with:
-   cd E:\Games\MCAI\bot
-   npm run models:check
-   Start-MCAI.ps1 reports missing role models but does not pull them unless you run it with -PullOllamaModels or set OLLAMA_AUTO_PULL_MODELS=true.
-   If models:check says a model is present on disk but not visible to Ollama, restart Ollama so it picks up OLLAMA_MODELS=E:\Ollama Models.
-3. Start the local Paper server.
-4. Start tj.
-5. Join Minecraft as ModVinny.
-6. In chat, run:
+Villagers, Nether work, blueprints, broad progression, large builds, and
+experimental combat are not part of the default product promise. Their source
+or status helpers may exist behind disabled feature flags. Curriculum and
+progression operating systems were removed from the live companion tree.
 
-   tj status
+REQUIREMENTS
+------------
 
+- Windows for the supported all-in-one launcher
+- Node.js 20 or newer
+- Java 21 or newer
+- Paper matching the Minecraft version in config.json
+- Minecraft Java Edition
+- optional local Ollama or OpenAI-compatible model server
 
-From PowerShell, project root:
+Keep Minecraft, dashboard, and the optional bridge on loopback. Do not
+port-forward the project.
 
-   cd E:\Games\MCAI
-   .\Start-MCAI.ps1
+FIRST SETUP
+-----------
 
-Alternative Windows command file:
+From the repository root:
 
-   cd E:\Games\MCAI
-   Start-MCAI.cmd
+1. Install bot dependencies:
 
-Run only the bot from the bot folder:
+   Set-Location .\bot
+   npm install
+   Set-Location ..
 
-   cd E:\Games\MCAI\bot
-   npm start
+2. Install Paper and, if needed, Java:
 
-Run doctor checks:
+   .\scripts\Install-Paper.ps1
+   .\scripts\Install-Java.ps1
 
-   cd E:\Games\MCAI\bot
-   npm run doctor
+3. Run MCAI.cmd without flags. First-run setup creates config.json, generates
+   private dashboard and bridge tokens, and asks for the owner and bot names.
 
-Run smoke checks:
+4. Keep host and dashboardHost on 127.0.0.1. Never commit config.json.
 
-   cd E:\Games\MCAI\bot
-   npm run smoke
+Advanced manual installs may copy config.example.json, but must replace both
+token placeholders. Review the Minecraft EULA at
+https://aka.ms/MinecraftEULA before starting the server. MCAI asks for explicit
+acceptance before writing eula=true. A non-interactive first server start may
+use --accept-eula only after the agreement has been reviewed.
 
-Run all unit tests:
+START AND STOP
+--------------
 
-   cd E:\Games\MCAI\bot
-   npm test
+Interactive launcher:
 
-Run Phase 10-16 regression audit:
+   MCAI.cmd
 
-   cd E:\Games\MCAI\bot
-   npm run audit:phase10-16
+Common command-line forms:
 
-Run syntax checks:
+   MCAI.cmd --start-server
+   MCAI.cmd --start-server --accept-eula
+   MCAI.cmd --start-bot
+   MCAI.cmd --start
+   MCAI.cmd --status
+   MCAI.cmd --stop-bot
+   MCAI.cmd --stop-server
+   MCAI.cmd --stop
 
-   cd E:\Games\MCAI\bot
-   npm run check
+The normal daily path is MCAI.cmd --start. Join the local address printed by
+the launcher with the Minecraft version configured in config.json.
 
+FIRST IN-GAME CHECK
+-------------------
 
-Dashboard:
+Send these from the configured owner account:
 
-   http://127.0.0.1:8787
-
-The dashboard is local-only by default. POST control actions require the dashboard token from config.json.
-
-
-============================================================
-2. SAFETY RULES
-============================================================
-
-Owner:
-
-   Only ModVinny should command tj.
-
-Emergency stop:
-
-   tj stop
-   tj cancel
-   tj halt
-
-These should cancel movement, active tasks, active skills, curriculum steps, gear tasks, villager tasks, blueprint builds, and bridge-triggered operations.
-
-LLM safety:
-
-   Ollama may help with dialogue and explanation.
-   Ollama must not verify evidence.
-   Ollama must not execute raw actions.
-   Ollama must not generate JavaScript for tj to run.
-   No OpenAI API is used.
-   No cloud API is used.
-
-Risky operations:
-
-   Risky operations require confirmation.
-   Examples: Nether entry, portal lighting, villager trades, enchanting, anvil use, potion use, blueprint building, bridge region changes.
-
-Honest unsupported features:
-
-   Brewing is scaffolded unless reliable API support exists.
-   Schematic import is disabled by default.
-   The server plugin bridge is optional.
-
-
-============================================================
-3. MAINTENANCE COMMANDS OUTSIDE MINECRAFT
-============================================================
-
-Run from E:\Games\MCAI\bot:
-
-   npm start
-      Start tj.
-
-   npm run doctor
-      Check config, dependencies, server reachability, Ollama, dashboard, bridge, safety.
-
-   npm run smoke
-      Quick smoke test for core systems.
-
-   npm test
-      Run all unit tests.
-
-   npm run test:phase10-16
-      Run the Phase 10-16 regression test only.
-
-   npm run audit:phase10-16
-      Run the master Phase 10-16 audit.
-
-   npm run skill:audit
-      Validate skill registry.
-
-   npm run evidence:audit
-      Validate evidence registry.
-
-   npm run curriculum:audit
-      Validate curriculum suggestions.
-
-   npm run curriculum:execution:audit
-      Validate approved curriculum execution.
-
-   npm run dashboard:test
-      Test dashboard state, control safety, and token behavior.
-
-   npm run progression:audit
-      Validate progression milestones and evidence.
-
-   npm run gear:audit
-      Validate gear upgrade systems.
-
-   npm run villager:audit
-      Validate villager economy systems.
-
-   npm run blueprint:audit
-      Validate blueprint systems.
-
-   npm run bridge:audit
-      Validate local server plugin bridge systems.
-
-   npm run natural:audit
-      Validate natural speech routing.
-
-   npm run test:natural-router
-      Test natural speech routing only.
-
-   npm run check
-      Syntax-check core modules, scripts, and tests.
-
-
-============================================================
-4. NATURAL SPEECH COMMANDS
-============================================================
-
-You do not have to memorize every exact command. tj now has a natural command router that translates common owner phrases into existing safe registered commands.
-
-Examples:
-
-   tj we need food
-      Routes to: tj get food
-
-   tj get wood
-      Routes to: tj gather wood
-
-   tj find coal
-      Routes to: tj mine coal
-
-   tj get 16 coal
-      Starts a coal run for 16 coal instead of stopping after one block.
-
-   tj mine 12 stone
-      Mines up to 12 safe stone/cobblestone blocks.
-
-   tj collect 6 logs
-      Starts a wood run for 6 logs.
-
-   tj lets get ready for mining
-      Routes to: tj prepare for mining
-
-   tj make camp
-      Routes to: tj make camp
-
-   tj make storage
-      Routes to: tj place storage chest
-
-   tj light this place
-      Routes to: tj light home
-
-   tj what should we do next
-      Routes to a progression/advisor command.
-
-   tj get better gear
-      Routes to: tj suggest gear upgrades
-
-   tj check if we are ready for the Nether
-      Routes to: tj nether checklist
-
-   tj find good trades
-      Routes to: tj best trades
-
-   tj build a small shelter
-      Routes to the small-shelter blueprint build flow.
-
-Ambiguous phrases ask a question instead of guessing:
-
-   tj make us safe
-      tj may ask whether you mean light home, build shelter, or protect you.
-
-Risky phrases still require the existing confirmation flow:
-
-   tj go nether
-      tj should not enter automatically. It should require Nether confirmation.
-
-Unsupported phrases are refused honestly:
-
-   tj build a giant castle
-      tj should explain that huge builds are not supported yet and offer small blueprints instead.
-
-Debug natural routing:
-
-   tj natural router status
-   tj what did you think i meant
-   tj clear pending intent
-   tj natural examples
-   tj natural test: we need food
-
-Important safety notes:
-
-   Emergency stop still wins first: tj stop, tj cancel, tj halt.
-   Exact commands still run before natural routing.
-   Only ModVinny can trigger natural action commands.
-   Ollama may help classify unclear phrases, but only from existing registered commands.
-   Ollama cannot invent commands, execute raw actions, or bypass safety.
-
-
-============================================================
-4.5. COMPETENCY, CORRECTIONS, AND LEARNING
-============================================================
-
-tj can now learn owner-approved natural phrases after clarification.
-
-Example:
-
-   ModVinny: tj make us safer
-   tj: I can do that a few ways: light home, build shelter, or protect you. Which one?
-   ModVinny: light home
-   tj: runs light home and remembers that "make us safer" means "tj light home".
-
-Rules:
-
-   Only ModVinny can teach mappings.
-   Learned mappings must point to existing registered commands.
-   Risky learned mappings still require the normal confirmation flow.
-   Learned mappings do not create new actions.
-   Ollama still cannot execute raw actions.
-
-Competency commands:
-
-   tj competency
-      Reports reliable, improving, shaky, blocked, and untested skill counts.
-
-   tj what are you good at?
-      Same as competency.
-
-   tj reliable skills
-      Lists skills with enough successful evidence.
-
-   tj shaky skills
-      Lists skills with weak or failing evidence.
-
-   tj untested skills
-      Lists skills that need more real tests.
-
-Command learning commands:
-
-   tj learned commands
-   tj command learning
-   tj natural learning
-      Lists learned natural phrase mappings.
-
-   tj learn commands on
-   tj learn commands off
-      Enables or disables natural command learning.
-
-Mode commands:
-
-   tj mode
-      Shows current interaction mode.
-
-   tj careful mode
-      Asks before more actions and avoids auto-running low-risk natural commands.
-
-   tj helper mode
-      Default mode. Auto-runs clear low-risk natural commands.
-
-   tj quiet mode
-      Keeps chat shorter.
-
-   tj explain mode
-      Gives short reasons and failure explanations.
-
-   tj test mode
-      Keeps extra logging and test-friendly explanations on.
-
-Failure recovery:
-
-   If tj fails, he should explain the practical blocker and suggest safe existing commands.
-
-   Example:
-      "I can't craft torches because I don't have coal. I can mine coal or gather wood."
-
-Manual test commands:
-
-   tj test plan
-   tj test natural commands
-   tj test core helper
-   tj test survival basics
-   tj test report
-
-Session recorder:
-
-   tj records high-level route decisions, failures, recovery suggestions, and stop events in session-log.jsonl when enabled.
-   It redacts tokens, secrets, and local paths.
-
-
-============================================================
-5. ALL REGISTERED MINECRAFT CHAT COMMANDS
-============================================================
-
-Use these in Minecraft chat as ModVinny.
-
-If a command says "[confirmation required]", tj should ask for or require a confirmation before doing the risky part.
-
-
-[CORE]
-
-tj stop | tj cancel | tj halt | tj freeze | tj stp | tj cnacel | stop tj
-   Immediately cancels movement, tasks, and long-running actions.
-
-tj status | tj stat
-   Reports tj's health, food, position, task, and owner distance.
-
-tj help | tj commands
-   Lists command groups and examples.
-
-
-[DEBUG / SKILLS / EVIDENCE / CURRICULUM]
-
-tj skills | tj what skills do you have
-   Lists skill categories and implemented counts.
-
-tj skill status | tj skill status mining
-   Reports skill details by category or skill name.
-
-tj skill audit
-   Validates the skill registry and reports problems.
-
-tj unimplemented skills
-   Lists registered skills that are not wired yet.
-
-tj risky skills
-   Lists high-risk or confirmation-required skills.
-
-tj run skill status | tj run skill inventory | tj run skill mining status
-   Runs a safe starter skill through skillRunner.js.
-
-tj active skill
-   Reports the currently running skill, if any.
-
-tj skill runner status
-   Reports runner status and runnable starter skills.
-
-tj cancel skill | tj stop skill
-   Cancels the active skill runner task.
-
-tj skill stats | tj skill stats status
-   Reports skill run success/failure stats.
-
-tj recent skills | tj skill history
-   Reports recent skill runner history.
-
-tj evidence status | tj skill evidence | tj evidence summary
-   Reports evidence tracking status.
-
-tj skill evidence status | tj evidence mining_status
-   Reports recent evidence for a skill.
-
-tj recent evidence | tj last skill evidence
-   Reports recent skill evidence summaries.
-
-tj evidence definitions | tj evidence types
-   Reports evidence definition counts.
-
-tj evidence audit
-   Validates skill evidence names and runner evidence.
-
-tj verify skill status | tj verify skill nether checklist
-   Runs a safe starter skill through the runner and reports evidence.
-
-tj curriculum status | tj curriculum
-   Reports curriculum suggestion status.
-
-tj suggest next skill | tj what can you practice | tj what should you practice
-   Suggests safe next skills without executing them.
-
-tj suggest skills | tj suggest next | tj what needs work
-   Lists safe curriculum skill suggestions without executing them.
-
-tj curriculum tracks | tj list curriculum tracks
-   Lists available curriculum tracks.
-
-tj suggest mining readiness | tj suggest nether readiness
-   Reports a curriculum track and its blockers without executing it.
-
-tj curriculum history | tj last curriculum suggestion
-   Reports recent curriculum suggestion history.
-
-tj accept suggestion
-   Records that a suggestion was useful without running it.
-
-tj dismiss suggestion
-   Dismisses the last curriculum suggestion without running anything.
-
-tj curriculum execution status | tj active curriculum | tj curriculum progress
-   Reports approved curriculum execution status.
-
-tj approve curriculum food_status | tj approve curriculum status | tj approve suggestion
-   Approves one low-risk skill for curriculum execution without running it.
-
-tj approve survival basics | tj approve curriculum track survival basics | tj approve mining readiness
-   Approves a curriculum track. Steps still run one at a time.
-
-tj run approved curriculum step | tj continue curriculum | tj run next curriculum step
-   Runs exactly one approved low-risk curriculum step through skillRunner.js.
-
-tj pause curriculum
-   Pauses the active curriculum session.
-
-tj cancel curriculum | tj stop curriculum
-   Cancels the active curriculum session.
-
-tj explain curriculum blockers | tj why is curriculum blocked
-   Explains why the active curriculum or next step is blocked.
-
-tj debug | tj brain | tj task | tj safety | tj memory
-   Reports debug, task, safety, and memory state.
-
-tj natural router status | tj intent status
-   Reports natural speech router status and pending intent.
-
-tj what did you think i meant | tj explain last intent
-   Explains the most recent natural speech route.
-
-tj clear pending intent
-   Clears a pending natural command confirmation.
-
-tj natural examples
-   Lists natural speech examples tj understands.
-
-tj natural test: we need food
-   Tests how a natural phrase would route without executing it.
-
-tj learned commands | tj command learning | tj natural learning
-   Lists learned natural command mappings.
-
-tj competency | tj what are you good at | tj what needs testing
-   Reports reliability, shaky skills, and untested skills.
-
-tj shaky skills
-   Lists skills that have weak or failing evidence.
-
-tj reliable skills
-   Lists skills with enough successful evidence.
-
-tj untested skills
-   Lists skills that need more testing.
-
-tj session events | tj session log
-   Reports recent high-level route/failure/session events.
-
-tj mode | tj careful mode | tj helper mode | tj quiet mode | tj explain mode | tj test mode
-   Shows or changes interaction mode.
-
-tj learn commands on | tj learn commands off
-   Enables or disables natural command learning.
-
-tj test plan | tj test natural commands | tj test core helper | tj test survival basics | tj test report
-   Shows manual test checklists.
-
-
-[MOVEMENT]
-
-tj come here | tj come hear | tj com here
-   Pathfinds close to ModVinny.
-
-tj follow me | tj folow me | tj folo me
-   Follows ModVinny.
-
-tj stay | tj stay here
-   Stops following and holds position.
-
-
-[SURVIVAL]
-
-tj gather wood | tj gather logs
-   Gathers a small capped amount of nearby safe wood.
-
-tj survive
-   Runs one semi-autonomous survival tick.
-
-
-[FOOD]
-
-tj food | tj food status
-   Reports food state.
-
-tj eat | tj eat food
-   Eats available food if needed.
-
-tj get food | tj gather food | tj get fud
-   Runs the food helper system to procure food. It no longer treats this as the same as "eat".
-
-tj find food | tj search food | tj locate food
-   Searches nearby food sources without using it as an eat command.
-
-tj cook food | tj make food
-   Uses furnace cooking support when possible.
-
-tj hunt food | tj kill cows | tj kill some cows
-   Hunts up to two nearby passive food animals if passive hunting is enabled and safe. tj now counts a hunt only when the animal death is confirmed.
-
-
-[INVENTORY]
-
-tj inventory | tj inv | tj what do you have
-   Shows a short useful inventory summary.
-
-tj tools | tj tool status
-   Reports best tools and durability concerns.
-
-tj give 3 oak logs to me | tj give bread to player | tj give me bread
-   Walks to ModVinny and drops the requested item if tj has it. If you say only "give item to player", tj asks which item.
-
-
-[ARMOUR]
-
-tj armour | tj armor
-   Reports armour status.
-
-tj equip armour | tj equip armor
-   Equips best available armour.
-
-
-[CRAFTING]
-
-tj craft item | tj craft
-   Crafts supported items through Mineflayer recipes.
-
-tj craft torches | tj craft torch
-   Crafts torches or lighting supplies.
-
-tj craft survival kit | tj survival kit
-   Crafts a small survival supply set if materials exist.
-
-tj craft basic tools
-   Crafts basic wooden tools.
-
-tj craft stone tools
-   Crafts basic stone tools.
-
-tj make axe | tj make pickaxe | tj make sword | tj make shovel | tj make hoe
-   Crafts the only available matching tool, or asks which material if several variants are possible.
-
-tj make wooden axe | tj make stone pickaxe | tj craft iron sword
-   Crafts that specific tool if tj has the materials and a usable recipe.
-
-If tj cannot craft the requested tool, he lists missing materials and may ask whether to scavenge them first.
-
-
-[BASE]
-
-tj set home
-   Saves current location as home.
-
-tj home | tj home status | tj base status
-   Reports home/base state.
-
-tj return home | tj return to base
-   Returns to saved home.
-
-tj make camp | tj build camp
-   Builds a small deterministic camp near home.
-
-tj build workstation | tj make workstation | tj place workstation
-   Places a small workstation area near home.
-
-tj build shelter | tj make shelter
-   Builds a small deterministic shelter near home.
-
-tj light home | tj base lighting
-   Places safe lighting around home when possible.
-
-
-[STORAGE]
-
-tj storage | tj storage status
-   Reports base storage state.
-
-tj place storage chest | tj place chest | tj make storage
-   Places a storage chest safely near home if materials are available.
-
-tj register storage chest | tj register chest | tj use this chest for storage
-   Registers a nearby chest or targeted chest as base storage.
-
-tj store items | tj deposit items
-   Stores excess items in registered storage.
-
-tj bring me | tj get item
-   Withdraws and brings a requested item when storage has it.
-
-
-[MINING]
-
-tj mining status | tj mine status
-   Reports mining readiness/status.
-
-tj mine stone | tj gather cobblestone
-   Mines a capped amount of safe stone/cobblestone.
-
-tj mine 12 stone | tj get 32 cobblestone | tj collect 16 logs
-   Amount-based resource commands are supported for known resources.
-
-tj mine coal | tj get coal | tj mine cole
-   Mines visible/safe coal when ready.
-
-tj get 16 coal | tj mine 16 coal | tj find 16 coal
-   Tries to collect the requested coal amount while normal safety checks apply.
-
-tj mine iron | tj get iron | tj get irn
-   Mines visible/safe iron with tool checks.
-
-tj get 8 iron | tj mine 8 iron | tj find 4 iron
-   Tries to mine the requested amount of safe reachable iron ore.
-
-tj mine diamond
-   Diamond mining remains guarded and not part of 1.0 acceptance. [confirmation required]
-
-
-[FARMING]
-
-tj farming status | tj farm status
-   Reports farm state.
-
-tj make wheat farm | tj make farm
-   Creates a small deterministic farm near home.
-
-tj maintain farm | tj harvest farm
-   Harvests mature registered crops and replants when possible.
-
-
-[ANIMALS]
-
-tj animal status | tj animal pen status
-   Reports registered animal pens.
-
-
-[EXPLORATION]
-
-tj map | tj map status
-   Reports map memory summary.
-
-tj remember this as | tj mark this as
-   Saves current location as a named waypoint.
-
-tj known places | tj waypoints
-   Lists known waypoints.
-
-tj scan area | tj look around
-   Scans visible nearby resources, landmarks, and dangers.
-
-tj scout north | tj scout south | tj scout east | tj scout west
-   Runs controlled scouting and returns.
-
-
-[COMBAT]
-
-tj combat status | tj defense status
-   Reports combat readiness and mode.
-
-tj threat scan | tj scan threats
-   Reports nearby hostile mobs.
-
-tj protect me | tj defend me
-   Enables owner-defense mode.
-
-tj attack player
-   PVP is disabled for 1.0. [confirmation required]
-
-
-[GOALS]
-
-tj goals | tj goal status | tj plan status | tj gols
-   Lists active long-term goals.
-
-tj prepare for mining | tj prepair for mining
-   Creates the prepare-for-mining goal template.
-
-tj next step | tj why are you doing that
-   Explains the current or next goal step.
-
-tj pause goal
-   Pauses the active goal.
-
-tj resume goal
-   Resumes a paused goal.
-
-tj cancel goal
-   Cancels the active goal.
-
-
-[NETHER]
-
-tj nether checklist | tj are you ready for the nether
-   Reports Nether readiness and missing supplies.
-
-tj prepare for nether | tj prepair nether
-   Prepares safe Nether supplies without entering.
-
-tj portal status | tj where is the portal
-   Reports known/nearby portal state.
-
-tj light portal
-   Lights a portal only after confirmation. [confirmation required]
-
-tj enter nether | tj safe nether entry
-   Runs guarded first-entry Nether flow after confirmation. [confirmation required]
-
-
-[PROGRESSION]
-
-tj progression | tj progression status | tj progress | tj achievements
-   Reports custom progression summary.
-
-tj progression check | tj check progression
-   Refreshes evidence-backed progression state.
-
-tj milestones | tj list milestones | tj completed milestones | tj incomplete milestones | tj blocked milestones
-   Lists progression milestones and status.
-
-tj next milestone | tj suggest milestone | tj what should we unlock next | tj what should we progress toward | tj what is the safest next milestone
-   Suggests safe next progression milestones.
-
-tj explain milestone mining_readiness | tj milestone food_security | tj what is blocking nether prep
-   Explains milestone prerequisites, evidence, and blockers.
-
-tj progression paths | tj recommended path
-   Lists safe progression paths.
-
-tj path safe survival | tj path miner | tj path builder | tj path farmer | tj path explorer | tj path nether prep
-   Explains one progression path and its next milestone.
-
-tj plan progression food_security | tj plan milestone mining_readiness
-   Creates a draft safe plan for a milestone.
-
-tj create goal for food_security | tj create goal for mining_readiness
-   Requests creation of a progression-linked goal. [confirmation required]
-
-tj create curriculum for mining_readiness
-   Requests creation of a progression-linked curriculum draft. [confirmation required]
-
-tj progression history
-   Reports recent progression history.
-
-tj advancement status | tj vanilla advancements
-   Reports best-effort vanilla advancement bridge status.
-
-
-[GEAR]
-
-tj gear status | tj gear | tj best gear
-   Reports current gear score, best items, and upgrade needs.
-
-tj suggest gear upgrades | tj next gear upgrade
-   Suggests safe gear upgrades without spending resources.
-
-tj enchanting status | tj enchant status | tj enchant options
-   Reports enchantment table, XP, lapis, and enchantable item readiness.
-
-tj enchant held item | tj enchant pickaxe | tj enchant sword
-   Requests a confirmed enchantment action through Mineflayer enchantment table APIs. [confirmation required]
-
-tj anvil status | tj repair status
-   Reports anvil, repair, combine, and enchanted book readiness.
-
-tj repair pickaxe | tj apply book to pickaxe | tj combine books
-   Requests confirmed anvil repair/combine/book use. [confirmation required]
-
-tj potion status | tj potions | tj recommend potion
-   Reports carried potion inventory and safe potion recommendations.
-
-tj use fire resistance | tj use healing potion
-   Requests confirmed potion use. [confirmation required]
-
-tj brewing status | tj can you brew fire resistance
-   Reports brewing support and ingredients without faking brewing.
-
-tj brew fire resistance | tj brew healing
-   Brewing mutation is scaffolded only until reliable brewing stand support is implemented. [confirmation required]
-
-
-[VILLAGERS]
-
-tj villager status | tj nearby villagers
-   Reports nearby and remembered villagers.
-
-tj scan villagers
-   Scans nearby villagers and records safe memory/waypoints.
-
-tj village status | tj known villages
-   Reports nearby village evidence and known villages.
-
-tj known villagers
-   Lists remembered villagers.
-
-tj valuable villagers
-   Lists villagers marked as valuable.
-
-tj remember village | tj remember this village
-   Saves the current possible village location when evidence is visible.
-
-tj mark villager valuable
-   Marks a known villager as valuable after confirmation. [confirmation required]
-
-tj confirm mark villager valuable | tj confirm village protection
-   Confirms pending villager memory/protection updates.
-
-tj trading status | tj trade status
-   Reports villager trading API readiness and nearby trade context.
-
-tj inspect trades | tj inspect villager trades | tj what trades are nearby
-   Safely opens the nearest villager trade window and records visible trades if the API works.
-
-tj best trades | tj find mending trade | tj find good books
-   Ranks known villager trades by usefulness and cost.
-
-tj economy status | tj emerald status
-   Reports emerald count, reserves, and trade history totals.
-
-tj suggest trades | tj what should we trade
-   Suggests useful known trades without executing them.
-
-tj trade history
-   Reports recent villager trade attempts.
-
-tj buy trade 1 | tj execute trade | tj buy best book
-   Executes a confirmed villager trade through Mineflayer trading APIs. [confirmation required]
-
-tj confirm trade | tj confirm buy book | tj confirm spend emeralds
-   Confirms the pending villager trade request.
-
-tj protect villagers | tj village safety | tj warn village danger
-   Reports village/villager threat warnings without reckless combat.
-
-
-[BLUEPRINTS]
-
-tj blueprint status | tj schematic status
-   Reports blueprint build system status and active build state.
-
-tj schematic status | tj list schematics
-   Reports schematic import status honestly. Import is disabled by default.
-
-tj blueprints | tj list blueprints
-   Lists built-in deterministic blueprints.
-
-tj preview small shelter | tj preview blueprint starter workstation
-   Previews blueprint size, risk, and block count without placing anything.
-
-tj materials for small shelter | tj can you build small shelter
-   Checks required and missing materials for a blueprint.
-
-tj plan build small shelter | tj plan blueprint storage wall
-   Creates a safe blueprint build plan and preview.
-
-tj build starter workstation | tj build small shelter | tj build storage wall | tj build torch ring
-   Creates a confirmed blueprint build request. Placement starts only after confirmation. [confirmation required]
-
-tj confirm build
-   Starts the pending approved blueprint build in a capped run.
-
-tj continue build | tj resume build
-   Continues a paused blueprint build for one capped placement run.
-
-tj cancel build | tj stop building
-   Cancels the active blueprint build.
-
-
-[BRIDGE]
-
-tj server bridge | tj bridge status | tj plugin status
-   Reports whether the optional local Paper plugin bridge is connected.
-
-tj server status
-   Reports local Paper bridge server telemetry when the plugin is available.
-
-tj bridge health
-   Checks the local plugin bridge health endpoint.
-
-tj recent server events | tj bridge events
-   Lists recent server-side bridge events without spamming raw JSON. Already processed event ids are remembered so polling does not replay the same old event forever.
-
-tj recent deaths
-   Lists recent death events reported by the local bridge.
-
-tj recent advancements
-   Lists recent advancement events reported by the local bridge.
-
-tj bridge regions | tj protected regions | tj region status
-   Lists protected or watched regions from the local bridge.
-
-tj register home region | tj register farm region | tj register village region | tj register portal region | tj register region home
-   Registers a home/farm/village/portal region with the local bridge after confirmation. [confirmation required]
-
-tj delete bridge region home_base
-   Deletes a bridge region after confirmation. [confirmation required]
-
-tj bridge emergency stop | tj stop from bridge
-   Tests bridge emergency stop and triggers local cancellation.
-
-
-[DIALOGUE]
-
-tj talk mode | tj personality
-   Reports dialogue/personality settings.
-
-tj memories | tj what do you remember
-   Reports conversation memory summary.
-
-
-============================================================
-6. CONFIRMATION PATTERN
-============================================================
-
-When tj says an action needs confirmation, use the matching confirm command.
-
-Common confirmations:
-
-   tj confirm build
-   tj confirm trade
-   tj confirm enchant
-   tj confirm anvil
-   tj confirm use book
-   tj confirm use potion
-   tj confirm brewing
-   tj confirm mark villager valuable
-
-If you are unsure what confirmation is pending, ask:
-
-   tj status
-   tj active skill
-   tj curriculum progress
-   tj blueprint progress
-   tj gear status
-   tj trading status
-
-
-============================================================
-7. FAQ
-============================================================
-
-Q: What is the most important emergency command?
-A: tj stop
-
-Q: Who can command tj?
-A: ModVinny. Owner-only command behavior should block other players.
-
-Q: Does tj use OpenAI?
-A: No. The project is configured for local Ollama only.
-
-Q: What model does tj use?
-A: tj uses local role-based Ollama models:
-   - Router/planner: qwen3:14b
-   - Dialogue: mistral-nemo:12b
-   - Structured/code helper: qwen2.5-coder:14b
-   - Fallback: phi4-mini:latest
-   The configured model store is E:\Ollama Models.
-
-Q: Does tj need the internet?
-A: No. The bot is intended to run locally.
-
-Q: What should I run first if something feels broken?
-A:
-   cd E:\Games\MCAI\bot
-   npm run doctor
-   npm run smoke
-
-Q: What is the full regression check?
-A:
-   cd E:\Games\MCAI\bot
-   npm run audit:phase10-16
-
-Q: How do I open the dashboard?
-A:
-   http://127.0.0.1:8787
-
-Q: Why does the dashboard ask for a token?
-A: POST control actions are protected so the dashboard cannot bypass owner-only safety.
-
-Q: Can the dashboard run raw Minecraft commands?
-A: No. Raw dashboard commands are disabled. Dashboard controls go through safe modules.
-
-Q: What does evidence mean?
-A: Evidence is deterministic proof from action results, inventory, position, world state, memory, or bridge events. Ollama dialogue does not count as evidence.
-
-Q: Can Ollama mark a skill complete?
-A: No. Ollama may explain evidence later, but it cannot create or verify evidence.
-
-Q: Can tj practice skills by himself?
-A: Not freely. Curriculum suggestions are safe recommendations. Approved curriculum execution runs one safe step at a time.
-
-Q: How do I run one approved curriculum step?
-A:
-   tj approve survival basics
-   tj run approved curriculum step
-
-Q: Will tj run the whole curriculum track automatically?
-A: No. tj pauses after each approved step.
-
-Q: Can tj go to the Nether by himself?
-A: No. Nether entry is guarded and requires confirmation.
-
-Q: Do I have to use exact commands?
-A: No. Natural speech works for common requests, such as "tj we need food", "tj get wood", "tj make camp", "tj what should we do next", and "tj check if we are ready for the Nether".
-
-Q: What happens if natural speech is ambiguous?
-A: tj asks a clarification question and stores the pending intent for about 30 seconds. You can answer yes/no or choose one of the options.
-
-Q: Can natural speech bypass confirmations?
-A: No. Risky commands still use the same confirmation and safety rules as exact commands.
-
-Q: Does tj remember things after logging out?
-A: Main session memory and conversation memory are now cleared on logout because clearMemoryOnLogout and clearConversationMemoryOnLogout are true in config.json. Longer-term system files such as map/progression/skill history are separate.
-
-Q: How do I test what tj understood?
-A:
-   tj natural test: we need food
-   tj what did you think i meant
-
-Q: Can tj mine diamonds by himself?
-A: No. Diamond/deep mining remains guarded or unimplemented depending on the skill.
-
-Q: Can tj fight players?
-A: No. PVP is disabled/blocked.
-
-Q: Can tj enchant gear?
-A: tj can report enchanting readiness and request confirmed enchantment actions. It should not spend XP/lapis or modify valuable gear without confirmation.
-
-Q: Can tj use anvils and enchanted books?
-A: Status and planning are supported. Mutating anvil/book use requires confirmation.
-
-Q: Can tj brew potions?
-A: Brewing is scaffolded unless reliable brewing stand support is available. tj should report unsupported status honestly.
-
-Q: Can tj trade with villagers?
-A: tj can scan villagers, inspect trades if the Mineflayer API supports it, rank trades, and execute only confirmed trades.
-
-Q: Will tj spend all emeralds?
-A: No. Emerald reserve and confirmation rules are enforced.
-
-Q: Can tj build structures?
-A: tj can preview, plan, estimate materials, and build small built-in deterministic blueprints after confirmation.
-
-Q: Can tj import schematics?
-A: Schematic import is disabled by default and should not claim support unless a safe parser is enabled and tested.
-
-Q: Can tj build a huge castle?
-A: No. Phase 15 is limited to small, safe built-in blueprints.
-
-Q: What is the server plugin bridge?
-A: An optional local Paper plugin bridge for cleaner server-side events, protected regions, deaths, advancements, and telemetry.
-
-Q: Does the plugin bridge give tj cheat powers?
-A: No. It must not teleport, give items, run arbitrary server commands, or bypass safety.
-
-Q: What if the bridge is not installed?
-A: tj should continue working and report the bridge as unavailable.
-
-Q: What if Java is not on PATH?
-A: The bot can still run if the Paper server is launched separately. Building the optional plugin jar requires a proper JDK/build setup.
-
-Q: The launcher says a Minecraft server is already running. What do I do?
-A: If it reports Paper 1.21.11 on 127.0.0.1:25565, the launcher should reuse it and start tj. If it reports a different Minecraft version, stop that server window first, then run Start-MCAI.cmd again.
-
-Q: Where is the regression report?
-A:
-   E:\Games\MCAI\PHASE_10_16_REGRESSION_REPORT.md
-
-Q: Where is the manual test plan?
-A:
-   E:\Games\MCAI\PHASE_10_16_TEST_PLAN.md
-
-Q: Where is this manual?
-A:
-   E:\Games\MCAI\MCAI_MANUAL.txt
-
-
-============================================================
-8. QUICK COMMAND CHEAT SHEET
-============================================================
-
-Emergency:
-
-   tj stop
-
-Status:
-
-   tj status
    tj help
-   tj skills
-   tj evidence status
-   tj curriculum status
-   tj progression status
-   tj gear status
-   tj villager status
-   tj blueprint status
-   tj bridge status
-
-Useful safe checks:
-
-   tj inventory
-   tj food status
-   tj home status
-   tj mining status
-   tj farming status
-   tj map status
-   tj combat status
-   tj nether checklist
-
-Suggestions:
-
-   tj suggest next skill
-   tj next milestone
-   tj suggest gear upgrades
-   tj suggest trades
-
-One-step approved curriculum:
-
-   tj approve survival basics
-   tj run approved curriculum step
-   tj curriculum progress
-
-Blueprint flow:
-
-   tj blueprints
-   tj preview small shelter
-   tj materials for small shelter
-   tj build starter workstation
-   tj confirm build
-   tj blueprint progress
-
-Dashboard:
-
-   http://127.0.0.1:8787
-
-Regression:
-
-   cd E:\Games\MCAI\bot
-   npm run audit:phase10-16
-
-============================================================
-ESSENTIAL CORE HARDENING
-============================================================
-
-Phase 18.6 does not add new gameplay features. It makes the existing command,
-safety, memory, dashboard, and plugin paths harder to bypass.
-
-Safety order:
-
-   1. tj ignores its own chat.
-   2. tj checks emergency stop before any LLM.
-   3. tj blocks non-owner action commands.
-   4. tj checks exact/fuzzy commands.
-   5. tj handles pending confirmations.
-   6. tj routes natural speech only to known commands.
-   7. tj executes actions through the action gate.
-   8. tj uses dialogue only when no action should run.
-
-Important commands:
-
-   tj stop
-   tj cancel
-   tj halt
-   tj explain last route
-   tj natural router status
-   tj clear pending intent
-
-Confirmation rules:
-
-   Risky actions need their own matching confirmation.
-   A trade confirmation cannot approve a blueprint build.
-   A blueprint confirmation cannot approve Nether entry.
-   Only ModVinny can confirm.
-   Confirmations expire.
-
-Hardening test commands:
-
-   cd E:\Games\MCAI\bot
-   npm run audit:core-hardening
-   npm run test:core-hardening
-   npm run audit:phase10-16
-   npm run doctor
-   npm run smoke
-
-Notes:
-
-   Dashboard controls still require the local token.
-   Plugin bridge controls cannot run raw server commands.
-   Ollama can classify, plan, and talk, but cannot execute raw actions.
-   Memory corruption creates a backup instead of wiping silently.
-
-
-============================================================
-IDLE AUTONOMY
-============================================================
-
-Phase 18.7 lets tj do one small helpful thing after about 100 seconds
-of true idle time.
-
-Allowed idle behavior:
-
-   - look/watch safely
-   - warn about danger
-   - mention low food or a missing supply
-   - suggest one safe next step
-   - run an allowed low-risk status/readiness skill
-   - make a short ambient comment
-
-Persistent danger warnings are cooldown-limited. tj may still warn about real danger, but it should not repeat the same warning every idle tick.
-
-Idle autonomy will NOT:
-
-   - mine
-   - build
-   - trade
-   - enchant
-   - use potions
-   - enter the Nether
-   - fight by itself
-   - break/place blocks
-   - spend resources
-   - bypass confirmations
-   - bypass tj stop
-
-Commands:
-
-   tj idle status
-   tj idle on
-   tj idle off
-   tj quiet idle
-   tj chatty idle
-   tj what were you about to do?
-   tj why did you say that?
-   tj don't suggest that again
-   tj reset idle memory
-   tj confirm reset idle memory
-
-Checks:
-
-   cd E:\Games\MCAI\bot
-   npm run idle:audit
-   npm run test:idle
-
-
-============================================================
-COMPETENT CORE RUNTIME
-============================================================
-
-Phase 20 makes tj useful first and impressive later. Competent Core is a
-small deterministic helper lane for common survival tasks.
-
-It is meant for:
-
-   - food
-   - wood
-   - safe visible stone/coal/iron collection
-   - come here / follow / stay
-   - prepare for mining
-   - prepare for night
-   - return home
-   - store items
-   - recover after a failure
-
-Natural examples:
-
-   tj we need food
-   tj get wood
-   tj find coal
-   tj get iron
-   tj lets get ready for mining
-   tj get ready for night
+   tj status
    tj come here
    tj follow me
-   tj stay here
-   tj go home
-   tj put stuff away
-   tj recover
+   tj stay
+   tj inventory
+   tj get wood
+   tj what danger is nearby
+   tj fish
+   tj stop
 
-Exact core commands:
+The configured owner is the only account allowed to trigger actions or approve
+risky work. Other players may receive harmless dialogue when enabled, but they
+must not be able to move the bot, teach command mappings, or confirm actions.
 
-   tj core status
-   tj core macros
-   tj run core get food
-   tj run core gather wood
-   tj run core prepare mining
-   tj run core mine coal
-   tj run core mine iron
-   tj what can you reliably do?
+Use "tj stop" whenever behavior is unexpected. It should cancel current
+movement and active tasks promptly.
 
-Safety rules:
+"tj what danger is nearby" reports named hostile mobs and environmental
+hazards that TJ can currently detect. "tj fish" keeps casting beside safe,
+open water until the owner sends "tj stop". At low health TJ reports his
+current hearts, backs away from danger, eats available safe food, and asks the
+owner for food or help when he cannot recover on his own.
 
-   - Only ModVinny can run core macros.
-   - One core macro runs at a time.
-   - tj stop cancels active core work.
-   - Core macros do not call Ollama for step execution.
-   - Core macros use existing registered actions/skills.
-   - Advanced guarded features remain guarded.
+LOCAL LLM
+---------
 
-Checks:
+The launcher and dashboard Setup page can select Ollama, LM Studio, or another
+local OpenAI-compatible server and assign installed models by role. Commands do
+not require an LLM when the configured mode keeps routing code-first.
 
-   cd E:\Games\MCAI\bot
-   npm run competent:audit
+If dialogue is not needed, use the supported off mode in config.json. Never
+point the project at an untrusted public model endpoint with private context.
+
+DASHBOARD
+---------
+
+Default address:
+
+   http://127.0.0.1:8787
+
+Use the private dashboardToken from config.json when prompted. The dashboard
+shows bot/owner state, safety, current work, inventory, recent evidence, and
+logs. Advanced panels may show unavailable or parked when their feature is off.
+
+The dashboard does not provide arbitrary JavaScript, shell execution, raw
+Mineflayer calls, or an unrestricted command console. Do not expose port 8787
+to the internet.
+
+DEVELOPER CHECKS
+----------------
+
+From the repository root:
+
+   Set-Location .\bot
+   npm run check
+   npm test
+   npm run doctor
+
+Focused checks include:
+
+   npm run test:thin-core
    npm run test:competent-core
-MINEFLAYER PLUGIN STATUS
+   npm run test:skills
+   npm run test:evidence
+   npm run dashboard:test
 
-tj can now report whether its Mineflayer helper plugins are actually installed, loaded, and usable at runtime.
+Historical phase audits may remain for regression coverage, but they are not
+current product setup instructions.
 
-Important commands:
-- npm run plugins:check
-- npm run plugins:audit
-- npm run test:plugins
-- tj plugin status
-- tj plugins
-- tj wrapper status
+PRIVATE DATA
+------------
 
-Critical plugins for reliable field behavior:
-- mineflayer-pathfinder
-- mineflayer-collectblock
-- mineflayer-tool
+Do not commit or distribute:
 
-Recommended optional plugins:
-- mineflayer-auto-eat
-- mineflayer-armor-manager
-- prismarine-viewer
+- config.json or .env files
+- dashboard/bridge tokens
+- memory and session files
+- worlds, player data, ops, whitelist, or bans
+- Paper jars or downloaded Java runtimes
+- logs, crash files, or node_modules
 
-If tj says it cannot reliably gather wood, mine coal, or mine iron, run:
-cd E:\Games\MCAI\bot
-npm run plugins:check
+Back up the world and memory files before upgrades or destructive testing.
 
-Install critical missing plugins with:
-cd E:\Games\MCAI\bot
-npm install mineflayer-collectblock mineflayer-tool
+TROUBLESHOOTING
+---------------
 
-The plugin wrappers are strict by default. If a plugin is missing, tj returns a clear failure instead of pretending collection, mining, or tool selection worked.
+Launcher exits before starting:
+   Confirm Node.js is installed and config.json is valid JSON.
+
+Paper does not start:
+   Confirm Java and a matching paper-<version>-*.jar are present. Review the
+   server window and logs for the actual error.
+
+Bot does not join:
+   Confirm Paper is listening, the configured version matches, the bot name is
+   allowed, and required Mineflayer dependencies are installed.
+
+Dashboard returns 401:
+   Enter the private dashboardToken from config.json.
+
+LLM is unavailable:
+   Start the configured local model server or keep LLM mode off/dialogue-only.
+   Core companion commands should remain deterministic.
+
+Task appears stuck:
+   Send "tj stop", check launcher status, then preserve recent logs and the
+   session log before restarting so the failure can be diagnosed.
+
+CURRENT REFERENCES
+------------------
+
+- README.md: product overview
+- QUICKSTART_1_0.md: first-run steps
+- launcher/README.md: launcher commands and menu
+- ARCHITECTURE.md: runtime tiers and feature gates
+- MODULE_MAP.md: source map
+- docs/guides/DASHBOARD.md: dashboard and setup
+- docs/guides/SKILLS.md: skill and evidence model
+- TEST_COMMANDS.txt: in-game smoke list
+
+Files under docs/history and archive are point-in-time records, not current
+installation or product guidance.

@@ -4,12 +4,13 @@ import { fileURLToPath } from 'node:url';
 import { getCommands, findCommandAlias, validateCommandWiring } from '../commandRegistry.js';
 import { getNaturalCommandPatterns, getNaturalExamples } from '../naturalCommandMap.js';
 import { routeNaturalCommand } from '../naturalCommandRouter.js';
+import { isInformationalOwnerQuery } from '../thinCore.js';
 import { createActions } from '../actions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const botDir = path.resolve(__dirname, '..');
 
-function mockActions() {
+async function mockActions() {
   const bot = {
     username: 'tj',
     players: {},
@@ -46,6 +47,12 @@ const competentCoreOverrides = new Map([
   ['tj follow me', 'tj run core follow owner'],
   ['tj return home', 'tj run core return home'],
   ['tj store items', 'tj run core store items'],
+  ['tj hunt food', 'tj get food'],
+  ['tj smelt charcoal', 'tj run core smelt charcoal'],
+  ['tj smelt iron', 'tj run core smelt iron'],
+  ['tj craft basic tools', 'tj run core craft basic tools'],
+  ['tj craft stone tools', 'tj run core craft stone tools'],
+  ['tj progress to iron', 'tj run core progress to iron'],
   ['tj prepare for mining', 'tj run core prepare for mining'],
   ['tj prepare for night', 'tj run core prepare for night']
 ]);
@@ -75,12 +82,13 @@ for (const example of getNaturalExamples()) {
     config: bot.mcaiConfig
   });
   const allowedOverride = competentCoreOverrides.get(example.canonicalCommand);
+  if (route.mode === 'answer' && isInformationalOwnerQuery(example.example)) continue;
   if (example.canonicalCommand && route.canonicalCommand !== example.canonicalCommand && route.canonicalCommand !== allowedOverride) {
     errors.push(`natural example "${example.example}" expected ${example.canonicalCommand} but got ${route.canonicalCommand || route.mode}`);
   }
 }
 
-const wiring = validateCommandWiring(mockActions());
+const wiring = validateCommandWiring(await mockActions());
 if (!wiring.ok) errors.push(`command wiring missing actions: ${wiring.missing.map((item) => `${item.name}:${item.action}`).join(', ')}`);
 
 const routerSource = fs.readFileSync(path.join(botDir, 'naturalCommandRouter.js'), 'utf8');

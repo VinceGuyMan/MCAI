@@ -2,6 +2,7 @@ const state = {
   token: localStorage.getItem('mcaiDashboardToken') || '',
   intervalMs: 1000
 };
+let refreshInFlight = null;
 
 function $(id) {
   return document.getElementById(id);
@@ -107,7 +108,7 @@ function renderStatus(data) {
   text('botFood', data.bot.food ?? '-');
   text('botPosition', pos(data.bot.position));
   text('botDimension', data.bot.dimension || '-');
-  text('ownerName', data.owner.username || 'ModVinny');
+  text('ownerName', data.owner.username || 'Player');
   text('ownerVisible', data.owner.visible ? 'yes' : 'no');
   text('ownerDistance', data.owner.distance === null ? 'unknown' : `${data.owner.distance} blocks`);
   text('hostilesNearby', data.safety.hostilesNearby ?? 0);
@@ -157,7 +158,7 @@ function renderStatus(data) {
   renderList('failureList', data.naturalRouting?.recentFailures || [], (event) => `${event.type}: ${event.reason || event.canonicalCommand || event.ownerText || ''}`);
 }
 
-async function refresh() {
+async function refreshOnce() {
   try {
     const payload = await apiGet('/api/status');
     if (payload.ok) renderStatus(payload.data);
@@ -165,6 +166,22 @@ async function refresh() {
     renderList('logList', logs.data || [], (entry) => `${entry.level}/${entry.category}: ${entry.message}`);
   } catch (error) {
     setControlResult(`Dashboard refresh failed: ${error.message}`, true);
+  }
+}
+
+function refresh() {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = refreshOnce().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+async function pollDashboard() {
+  try {
+    await refresh();
+  } finally {
+    window.setTimeout(pollDashboard, state.intervalMs);
   }
 }
 
@@ -257,5 +274,4 @@ document.addEventListener('click', async (event) => {
   }
 });
 
-refresh();
-setInterval(refresh, state.intervalMs);
+void pollDashboard();

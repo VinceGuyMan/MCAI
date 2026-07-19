@@ -11,11 +11,25 @@ export function onTaskFailed(event) {
 }
 
 export function onDangerDetected(event) {
-  return { ...event, type: 'danger', speak: 'Careful. I see danger nearby.' };
+  const summary = String(event?.summary || event?.threatSummary || '').trim();
+  return {
+    ...event,
+    type: 'danger',
+    speak: summary ? `Danger nearby: ${summary}.` : 'Careful. I see danger nearby.'
+  };
 }
 
 export function onLowHealth(event) {
-  return { ...event, type: 'low_health', speak: 'I am hurt. Backing off.' };
+  const health = Number.isFinite(Number(event?.health)) ? Number(event.health) : null;
+  const food = Number.isFinite(Number(event?.food)) ? Number(event.food) : null;
+  const danger = String(event?.dangerSummary || '').trim();
+  let recovery = 'I am backing off and checking what I need to recover.';
+  if (food !== null && food >= 18) recovery = `Hunger is ${food}/20, so I am staying safe to regenerate.`;
+  else if (event?.hasFood) recovery = `Hunger is ${food ?? '?'}/20; I am eating and backing off.`;
+  else if (food !== null) recovery = `Hunger is ${food}/20 and I have no safe food; please bring food or help clear the area.`;
+  const healthText = health === null ? 'My health is low.' : `My health is ${health}/20.`;
+  const dangerText = danger ? ` Nearby: ${danger}.` : '';
+  return { ...event, type: 'low_health', speak: `${healthText}${dangerText} ${recovery}` };
 }
 
 export function onLowFood(event) {
@@ -64,9 +78,26 @@ export function maybeSayEventComment(bot, memory, event) {
   const now = Date.now();
   const mem = memory.get();
   const urgent = ['danger', 'low_health', 'death', 'respawn'].includes(event?.type);
-  if (event?.type === 'danger' && now - (mem.lastThreatWarningAt || 0) < (config.dangerWarningCooldownMs || 45000)) return false;
+  if (event?.type === 'danger') {
+    const cooldown = Number(config.dangerWarningCooldownMs || 60000);
+    const signature = String(event?.signature || event?.summary || event?.threatSummary || event?.speak || 'danger');
+    const sameDanger = signature === String(mem.lastThreatWarningSignature || '');
+    const minChangedDangerDelay = Number(config.changedDangerWarningMinDelayMs || 15000);
+    const elapsed = now - Number(mem.lastThreatWarningAt || 0);
+    if ((sameDanger && elapsed < cooldown) || (!sameDanger && elapsed < minChangedDangerDelay)) return false;
+  }
+  if (event?.type === 'low_health') {
+    const cooldown = Number(config.lowHealthWarningCooldownMs || 60000);
+    const health = Number.isFinite(Number(event?.health)) ? Number(event.health) : 20;
+    const previousHealth = Number.isFinite(Number(mem.lastLowHealthWarningHealth)) ? Number(mem.lastLowHealthWarningHealth) : 20;
+    const elapsed = now - Number(mem.lastLowHealthWarningAt || 0);
+    const criticalEscalation = health <= 4 && previousHealth > 4;
+    const sharpDrop = previousHealth - health >= 4;
+    if (elapsed < cooldown && !criticalEscalation && !sharpDrop) return false;
+  }
   // Hunger/status nags are frequent in companion play — keep them quiet.
-  const hungerLike = event?.type === 'low_food' || /hungry|food/i.test(String(event?.speak || ''));
+  const hungerLike = event?.type === 'low_food'
+    || (event?.type !== 'low_health' && /hungry|food/i.test(String(event?.speak || '')));
   const hungerCooldown = Number(config.companionHungerCommentCooldownMs || config.ambientCommentCooldownMs || 90000);
   if (hungerLike && now - (mem.lastHungerCommentAt || 0) < hungerCooldown) return false;
   const eventCooldown = hungerLike
@@ -77,7 +108,15 @@ export function maybeSayEventComment(bot, memory, event) {
   if (!speak) return false;
   memory.update({
     lastEventCommentAt: now,
-    ...(event?.type === 'danger' ? { lastThreatWarningAt: now } : {}),
+    ...(['danger', 'low_health'].includes(event?.type) ? { lastSafetyWarningAt: now } : {}),
+    ...(event?.type === 'danger' ? {
+      lastThreatWarningAt: now,
+      lastThreatWarningSignature: String(event?.signature || event?.summary || event?.threatSummary || event?.speak || 'danger')
+    } : {}),
+    ...(event?.type === 'low_health' ? {
+      lastLowHealthWarningAt: now,
+      lastLowHealthWarningHealth: Number.isFinite(Number(event?.health)) ? Number(event.health) : null
+    } : {}),
     ...(hungerLike ? { lastHungerCommentAt: now } : {})
   });
   bot.chat(String(speak).slice(0, config.maxChatResponseLength || 280));

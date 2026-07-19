@@ -1,6 +1,6 @@
 # Server Plugin Bridge
 
-Phase 16 adds an optional local Paper plugin bridge for `tj`. The bridge gives cleaner server-side telemetry, event history, protected region awareness, and an emergency stop signal without giving the bot cheat powers.
+The optional local Paper plugin bridge gives MCAI cleaner server-side telemetry, event history, protected-region awareness, and an emergency-stop signal without giving the bot cheat powers.
 
 ## Security Model
 
@@ -17,7 +17,7 @@ Paper plugin
 -> local HTTP bridge
 -> bridgeClient.js / pluginBridge.js
 -> bridgeValidator.js / bridgeEvidence.js
--> safety, map memory, progression, dashboard
+-> safety, map memory, and dashboard
 ```
 
 Ollama never sends bridge commands. The dashboard and chat commands only call safe bridge actions.
@@ -26,11 +26,11 @@ Ollama never sends bridge commands. The dashboard and chat commands only call sa
 
 1. Build the plugin jar from `server-plugin`.
 2. Copy the jar into the local Paper `plugins` folder.
-3. Start the Paper server.
-4. Edit `plugins/MCAIBridge/config.yml` and set a local token.
-5. Restart or reload the plugin.
-6. Start `tj`.
-7. Run `tj bridge status`.
+3. Start Paper through `MCAI.cmd`. The launcher synchronizes `plugins/MCAIBridge/config.yml` with MCAI's local bridge host, port, token, and safety settings before Paper starts.
+4. Start `tj`.
+5. Run `tj bridge status`.
+
+If Paper is started outside the MCAI launcher, set the same private token in `config.json` (`serverPluginToken`) and `plugins/MCAIBridge/config.yml` (`bridge.token`) before enabling the bridge.
 
 This workspace currently includes plugin source and Gradle files. If Java/Gradle are not on PATH, build the jar from an environment that has JDK 21 and Gradle available.
 
@@ -112,12 +112,12 @@ Bridge events create evidence names such as:
 - `bridge_advancement_recorded`
 - `bridge_protected_region_event`
 
-Bridge evidence can strengthen progression and debugging, but it does not replace skill/action evidence for physical work such as inventory changes or block placement.
+Bridge evidence can strengthen debugging, but it does not replace skill/action evidence for physical work such as inventory changes or block placement.
 
 ## Tests
 
 ```powershell
-cd E:\Games\MCAI\bot
+Set-Location .\bot
 npm run bridge:audit
 npm run test:bridge
 ```

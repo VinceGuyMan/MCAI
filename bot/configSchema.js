@@ -1,5 +1,6 @@
 import fs from 'node:fs';
-import { loadConfig as loadRawConfig, configPath } from './config.js';
+import crypto from 'node:crypto';
+import { createDefaultConfig, loadConfig as loadRawConfig, configPath } from './config.js';
 
 const criticalKeys = ['ownerUsername', 'botUsername', 'host', 'port', 'minecraftVersion', 'auth', 'ollamaUrl', 'ollamaModel'];
 const expectedModelRoles = {
@@ -17,9 +18,14 @@ function isPositiveNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
-function isLoopbackHost(host) {
+export function isLoopbackHost(host) {
   const value = String(host || '').toLowerCase();
   return value === '127.0.0.1' || value === 'localhost' || value === '::1';
+}
+
+export function isPlaceholderToken(value) {
+  const token = String(value || '');
+  return token.length < 20 || /change-me|generate-a-private|example|placeholder/i.test(token);
 }
 
 export function normalizeConfig(config = {}) {
@@ -28,7 +34,7 @@ export function normalizeConfig(config = {}) {
     port: Number(config.port),
     friendlyPlayers: Array.isArray(config.friendlyPlayers) && config.friendlyPlayers.length > 0
       ? config.friendlyPlayers
-      : [config.ownerUsername || 'ModVinny'],
+      : [config.ownerUsername || 'Player'],
     botAliases: Array.isArray(config.botAliases) && config.botAliases.length > 0
       ? config.botAliases
       : ['tj', '@tj', '!tj']
@@ -41,10 +47,18 @@ export function validateConfig(config = {}) {
   for (const key of criticalKeys) {
     if (config[key] === undefined || config[key] === null || config[key] === '') errors.push(`${key} is required`);
   }
-  if (config.ownerUsername !== 'ModVinny') errors.push(`ownerUsername should be ModVinny for this release, got ${config.ownerUsername}`);
-  if (config.botUsername !== 'tj') errors.push(`botUsername should be tj for this release, got ${config.botUsername}`);
-  if (config.minecraftVersion !== '1.21.11') errors.push(`minecraftVersion should be 1.21.11, got ${config.minecraftVersion}`);
+  if (!/^[A-Za-z0-9_]{1,16}$/.test(String(config.ownerUsername || ''))) errors.push('ownerUsername must be a valid 1-16 character Minecraft name');
+  if (!/^[A-Za-z0-9_]{1,16}$/.test(String(config.botUsername || ''))) errors.push('botUsername must be a valid 1-16 character Minecraft name');
+  if (config.ownerUsername && config.botUsername && config.ownerUsername === config.botUsername) errors.push('ownerUsername and botUsername must be different');
+  if (config.minecraftVersion !== '1.21.11') warnings.push(`minecraftVersion ${config.minecraftVersion} is not the tested 1.21.11 release`);
   if (!isPositiveNumber(Number(config.port)) || Number(config.port) > 65535) errors.push(`port must be 1-65535, got ${config.port}`);
+  const minecraftHost = config.host || '127.0.0.1';
+  const publicMinecraft = !isLoopbackHost(minecraftHost);
+  if (config.auth === 'offline' && publicMinecraft && config.allowLanServerBinding !== true) {
+    errors.push('offline Minecraft hosting must use a loopback host unless allowLanServerBinding=true is explicitly set');
+  } else if (publicMinecraft) {
+    warnings.push(`Minecraft host ${minecraftHost} is not loopback; only use LAN binding on a trusted network`);
+  }
   if (!/^https?:\/\//.test(String(config.ollamaUrl || ''))) errors.push('ollamaUrl must be http(s)');
   // Custom models (Andy, qwen3.6, etc.) are fine — only require that roles are set.
   if (!config.ollamaModel) warnings.push('ollamaModel is empty; set a model in Setup LLM');
@@ -78,12 +92,13 @@ export function validateConfig(config = {}) {
     const dashboardPort = Number(config.dashboardPort || 8787);
     const dashboardHost = config.dashboardHost || '127.0.0.1';
     const publicDashboard = dashboardHost === '0.0.0.0' || dashboardHost === '::' || !isLoopbackHost(dashboardHost);
+    const placeholderDashboardToken = isPlaceholderToken(config.dashboardToken);
     if (!isPositiveNumber(dashboardPort) || dashboardPort > 65535) errors.push(`dashboardPort must be 1-65535, got ${config.dashboardPort}`);
     if (config.dashboardLocalOnly !== false && publicDashboard) errors.push('dashboardLocalOnly=true requires dashboardHost to be loopback');
-    if (publicDashboard && config.dashboardToken === 'change-me-local-token') errors.push('public dashboard binding requires a non-default dashboardToken');
+    if (publicDashboard && placeholderDashboardToken) errors.push('public dashboard binding requires a private dashboardToken');
     if (config.dashboardAllowRawCommand) errors.push('dashboardAllowRawCommand must stay false');
     if (config.dashboardAllowDangerousControl) warnings.push('dashboardAllowDangerousControl should stay false for local 1.0 safety');
-    if (config.dashboardToken === 'change-me-local-token') warnings.push('dashboardToken is the default; change it if anyone else can access this machine');
+    if (!publicDashboard && placeholderDashboardToken) warnings.push('dashboardToken is a placeholder; the first-run launcher normally generates a private token');
   }
   if (config.progressionEnabled) {
     const riskLevels = new Set(['low', 'medium', 'high']);
@@ -152,12 +167,13 @@ export function validateConfig(config = {}) {
     const bridgePort = Number(config.serverPluginPort || 8791);
     const bridgeHost = config.serverPluginHost || '127.0.0.1';
     const publicBridge = bridgeHost === '0.0.0.0' || bridgeHost === '::' || !isLoopbackHost(bridgeHost);
+    const placeholderBridgeToken = isPlaceholderToken(config.serverPluginToken);
     if (config.serverPluginBridgeMode !== 'local_http') errors.push(`serverPluginBridgeMode must be local_http, got ${config.serverPluginBridgeMode}`);
     if (!isPositiveNumber(bridgePort) || bridgePort > 65535) errors.push(`serverPluginPort must be 1-65535, got ${config.serverPluginPort}`);
     if (config.serverPluginLocalOnly !== false && publicBridge) errors.push('serverPluginLocalOnly=true requires serverPluginHost to be loopback');
     if (config.serverPluginRequireToken !== false && !config.serverPluginToken) errors.push('serverPluginToken is required when serverPluginRequireToken=true');
-    if (publicBridge && config.serverPluginToken === 'change-me-server-bridge-token') errors.push('public server plugin bridge binding requires a non-default token');
-    if (!publicBridge && config.serverPluginToken === 'change-me-server-bridge-token') warnings.push('serverPluginToken is the default; acceptable only for local-only testing');
+    if (publicBridge && placeholderBridgeToken) errors.push('public server plugin bridge binding requires a private token');
+    if (!publicBridge && placeholderBridgeToken) warnings.push('serverPluginToken is a placeholder; the first-run launcher normally generates a private token');
     if (config.serverPluginAllowDangerousControl) errors.push('serverPluginAllowDangerousControl must stay false');
     if (config.serverPluginAllowServerCommands) errors.push('serverPluginAllowServerCommands must stay false');
     if (config.serverPluginAllowTeleport) errors.push('serverPluginAllowTeleport must stay false');
@@ -178,9 +194,24 @@ export function explainConfigErrors(result) {
   return lines.join('\n') || 'Config is valid.';
 }
 
-export function writeDefaultConfigIfMissing() {
+export function createInstallConfig(overrides = {}) {
+  const ownerUsername = String(overrides.ownerUsername || 'Player').trim() || 'Player';
+  const botUsername = String(overrides.botUsername || 'tj').trim() || 'tj';
+  return {
+    ...createDefaultConfig(),
+    ...overrides,
+    ownerUsername,
+    botUsername,
+    friendlyPlayers: [ownerUsername],
+    dashboardToken: overrides.dashboardToken || crypto.randomBytes(24).toString('base64url'),
+    serverPluginToken: overrides.serverPluginToken || crypto.randomBytes(24).toString('base64url'),
+    firstRunComplete: overrides.firstRunComplete === true
+  };
+}
+
+export function writeDefaultConfigIfMissing(overrides = {}) {
   if (fs.existsSync(configPath)) return false;
-  const config = loadRawConfig();
+  const config = createInstallConfig(overrides);
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
   return true;
 }

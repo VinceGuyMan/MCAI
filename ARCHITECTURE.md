@@ -1,6 +1,5 @@
 # MCAI Architecture
 
-**Path:** `F:\Games\MCAI`  
 **Goal of this document:** make a vibe-coded 150-module bot *maintainable* without claiming every module is production-ready.
 
 ## One-sentence model
@@ -62,8 +61,8 @@ Code may exist and even be imported, but **should not run** with the default thi
 | System | Flag (should be false in thin mode) | Domain files |
 |--------|--------------------------------------|--------------|
 | Broad autonomy | `advancedAutonomyEnabled` | `brain.js` plan apply, idle autonomy |
-| Curriculum | `curriculumExecutionEnabled` | `curriculum*.js` |
-| Progression | `progressionExecutionEnabled` | `progression*.js` |
+| Curriculum | removed; compatibility flags remain false | retired stubs only |
+| Progression | removed; compatibility flags remain false | retired stubs only |
 | Villagers | `villagerSystemEnabled` | `villager*.js`, trade*, economy* |
 | Nether | `netherSystemEnabled` | `nether*.js`, `portalManager.js` |
 | Blueprints | `blueprintSystemEnabled` | `blueprint*.js`, `schematicImport.js` |
@@ -100,7 +99,7 @@ Still open:
 Do **not** mass-move JS in one shot. Prefer:
 
 ```text
-F:\Games\MCAI\
+MCAI\
   README.md
   ARCHITECTURE.md
   MODULE_MAP.md
@@ -144,7 +143,7 @@ From `config.json` intent:
 - Advanced execution flags: **false**
 - `competentCoreDisableAdvancedAutonomy: true`
 - Local Ollama only; no cloud API
-- Owner `ModVinny` only for commands
+- Only the configured `ownerUsername` may issue action commands
 
 ## Where to work next
 

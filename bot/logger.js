@@ -9,6 +9,7 @@ let currentConfig = {
   logToFile: true,
   logFile: 'logs/mcai.log',
   maxLogFileSizeMb: 10,
+  maxLogFileGenerations: 5,
   redactSecrets: true,
   projectRoot: defaultProjectRoot
 };
@@ -27,11 +28,57 @@ function shouldLog(level) {
   return levels[level] >= levels[currentConfig.logLevel || 'info'];
 }
 
+function archivePath(file, generation) {
+  return `${file}.${generation}`;
+}
+
+function removeFileIfPresent(file) {
+  try {
+    fs.unlinkSync(file);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+}
+
+function pruneOldArchives(file, maxGenerations) {
+  const directory = path.dirname(file);
+  const baseName = path.basename(file).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const archivePattern = new RegExp(`^${baseName}\\.([1-9]\\d*)$`);
+  for (const entry of fs.readdirSync(directory)) {
+    const match = entry.match(archivePattern);
+    if (match && Number(match[1]) >= maxGenerations) {
+      removeFileIfPresent(path.join(directory, entry));
+    }
+  }
+}
+
+function rotateLogFile(file, maxGenerations) {
+  // Delete destinations before rename: Node/Windows does not reliably replace an
+  // existing file with renameSync, unlike POSIX platforms.
+  pruneOldArchives(file, maxGenerations);
+  for (let generation = maxGenerations - 1; generation >= 1; generation -= 1) {
+    const source = archivePath(file, generation);
+    if (!fs.existsSync(source)) continue;
+    const destination = archivePath(file, generation + 1);
+    removeFileIfPresent(destination);
+    fs.renameSync(source, destination);
+  }
+  const firstArchive = archivePath(file, 1);
+  removeFileIfPresent(firstArchive);
+  fs.renameSync(file, firstArchive);
+}
+
 function rotateIfNeeded(file) {
   try {
-    const maxBytes = Math.max(1, currentConfig.maxLogFileSizeMb || 10) * 1024 * 1024;
+    const configuredMb = Number(currentConfig.maxLogFileSizeMb);
+    const maxBytes = Math.max(1, Number.isFinite(configuredMb) ? configuredMb : 10) * 1024 * 1024;
+    const configuredGenerations = Number(currentConfig.maxLogFileGenerations);
+    const maxGenerations = Math.max(
+      1,
+      Math.min(100, Number.isFinite(configuredGenerations) ? Math.trunc(configuredGenerations) : 5)
+    );
     if (fs.existsSync(file) && fs.statSync(file).size > maxBytes) {
-      fs.renameSync(file, `${file}.1`);
+      rotateLogFile(file, maxGenerations);
     }
   } catch {
     // Logging should never crash the bot.

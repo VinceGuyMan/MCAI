@@ -195,6 +195,7 @@ export async function createActions(bot, config, deps) {
     comeToOwner,
     followOwner,
     stay,
+    waterRescue,
     lookAtOwner
   } = createMovementHandlers({
     bot,
@@ -202,6 +203,7 @@ export async function createActions(bot, config, deps) {
     memory,
     taskQueue,
     perception,
+    safety,
     cancellation,
     state,
     setupMovements,
@@ -302,6 +304,7 @@ export async function createActions(bot, config, deps) {
     gatherPlantFood,
     handleFoodSurvival,
     stayNearFriendlyPlayers,
+    recoverLowHealth,
     surviveTick,
     taskStatusText,
     inventoryStatus,
@@ -906,6 +909,7 @@ export async function createActions(bot, config, deps) {
     comeToOwner,
     followOwner,
     stay,
+    waterRescue,
     lookAtOwner,
     gatherWood,
     mineStone,
@@ -1248,6 +1252,7 @@ export async function createActions(bot, config, deps) {
     fishForFood,
     gatherPlantFood,
     handleFoodSurvival,
+    recoverLowHealth,
     food_status: foodStatus,
     eat_if_hungry: config.thinCoreEnabled ? thinEatIfHungryAction : eatIfHungry,
     find_food: findFood,
@@ -1619,4 +1624,3 @@ export async function createActions(bot, config, deps) {
   bot.mcaiCancellation = cancellation;
   return api;
 }
-

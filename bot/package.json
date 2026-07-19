@@ -1,8 +1,11 @@
 {
   "name": "mcai-ollama-bot",
-  "version": "1.0.0-local",
+  "version": "0.2.0-public-alpha",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node bot.js",
     "bot": "node bot.js",
@@ -49,7 +52,7 @@
     "dashboard:test": "node --test --test-concurrency=1 test/dashboard.test.js",
     "test:unit": "node --test --test-concurrency=1 test/*.test.js",
     "test": "npm run test:unit",
-    "check": "node --check bot.js && node --check companionMode.js && node --check thinCore.js && node --check chat.js && node --check naturalCommandRouter.js && node --check actions/lazyTier2.js && node --check actions/createActions.js && node --check config.js && node --check brain.js"
+    "check": "node scripts/check-syntax.mjs"
   },
   "dependencies": {
     "canvas": "^3.2.3",

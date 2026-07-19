@@ -1,4 +1,4 @@
-# Phase 15: Blueprint / Schematic Building
+# Blueprint and schematic building
 
 ## Overview
 
@@ -22,7 +22,7 @@ The builder never imports Ollama and does not accept raw placement text. Mutatin
 
 ## Built-In Blueprints
 
-Phase 15 ships with small deterministic blueprints:
+The parked blueprint domain includes small deterministic blueprints:
 
 - `starter_workstation`: crafting table, furnace, chest, and torches.
 - `torch_ring`: a small ring of torches.
@@ -46,7 +46,7 @@ Blueprints are limited by config:
 
 `materialEstimator.js` counts required blocks, checks inventory, reports missing materials, and only allows safe substitutions when explicitly approved in a future flow.
 
-Phase 15 does not spend rare blocks, ores, diamonds, filled containers, or dangerous blocks as build material.
+The blueprint safety policy does not spend rare blocks, ores, diamonds, filled containers, or dangerous blocks as build material.
 
 ## Build Planning
 
@@ -65,7 +65,7 @@ Planning does not place or break blocks.
 
 `blueprintSafety.js` blocks builds when:
 
-- the request is not from ModVinny
+- the request is not from the configured owner
 - confirmation is missing
 - cancellation is active
 - hostile mobs or active danger are nearby
@@ -140,7 +140,7 @@ Imported schematics are disabled by default:
 
 `schematicImport.js` is an honest scaffold. It rejects path traversal, only allows the local `schematics` folder if future support is enabled, and reports unsupported status unless a safe parser is added and tested.
 
-Phase 15 does not claim `.schem` or `.schematic` import support.
+MCAI does not claim `.schem` or `.schematic` import support.
 
 ## Commands
 
@@ -180,7 +180,7 @@ Dashboard controls still require the dashboard token and route through existing 
 ## Tests
 
 ```powershell
-cd E:\Games\MCAI\bot
+Set-Location .\bot
 npm run blueprint:audit
 npm run test:blueprints
 ```
@@ -189,7 +189,7 @@ The audit validates built-ins, dimensions, dangerous blocks, commands, evidence 
 
 ## Known Caveats
 
-- Phase 15 starts with small built-in blueprints only.
+- The parked domain starts with small built-in blueprints only.
 - Imported schematics are disabled until a safe parser is added and tested.
 - Large decorative builds are future work.
 - Redstone blueprints are future work.
